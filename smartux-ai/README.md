@@ -1,70 +1,133 @@
-# Getting Started with Create React App
+# SmartUX-AI
 
-This project was bootstrapped with [Create React App](https://github.com/facebook/create-react-app).
+Prototype d'interface hospitalière en français pour le projet **SILLAGE** (CRIStAL × Centrale Lille).
 
-## Available Scripts
+---
 
-In the project directory, you can run:
+## Lancer le projet
 
-### `npm start`
+Deux serveurs doivent tourner en parallèle :
 
-Runs the app in the development mode.\
-Open [http://localhost:3000](http://localhost:3000) to view it in your browser.
+```bash
+# Terminal 1 — Frontend React (port 3000)
+npm start
 
-The page will reload when you make changes.\
-You may also see any lint errors in the console.
+# Terminal 2 — API Express (port 3001)
+node server.js
+```
 
-### `npm test`
+Autres commandes :
 
-Launches the test runner in the interactive watch mode.\
-See the section about [running tests](https://facebook.github.io/create-react-app/docs/running-tests) for more information.
+```bash
+npm run build   # Build de production
+npm test        # Lancer les tests
+```
 
-### `npm run build`
+---
 
-Builds the app for production to the `build` folder.\
-It correctly bundles React in production mode and optimizes the build for the best performance.
+## Architecture
 
-The build is minified and the filenames include the hashes.\
-Your app is ready to be deployed!
+### Frontend — `src/SmartUX_AI_Bots.jsx`
 
-See the section about [deployment](https://facebook.github.io/create-react-app/docs/deployment) for more information.
+Composant principal React (~1500 lignes). Toute la logique UI s'y trouve.
 
-### `npm run eject`
+### Base de données locale — `src/database.js`
 
-**Note: this is a one-way operation. Once you `eject`, you can't go back!**
+Toutes les données statiques du projet ont été **extraites** de `SmartUX_AI_Bots.jsx` vers ce fichier dédié. Il exporte :
 
-If you aren't satisfied with the build tool and configuration choices, you can `eject` at any time. This command will remove the single build dependency from your project.
+| Export | Contenu |
+|--------|---------|
+| `DB_PATIENTS` | 6 patients (IPP, nom, naissance, groupe sanguin, chambre, service) |
+| `DB_STAFF` | 16 membres du personnel (rôle, niveau d'accès, mot de passe, biométrie) |
+| `DB_MEDICAMENTS` | 45 médicaments (DCI, forme, dosage, voie, catégorie) |
+| `KNOWN_ALLERGIES` | Allergies connues par `patient_id` |
+| `TYPO_CORRECTIONS` | Dictionnaire de correction automatique des fautes de frappe |
+| `AUTOCOMPLETE_CORPUS` | Phrases et termes médicaux pour l'autocomplétion NLP |
+| `ACCESS_PERMISSIONS` | Permissions par niveau d'accès (1 à 5) |
+| `PERM_LABELS` | Labels français des permissions |
 
-Instead, it will copy all the configuration files and the transitive dependencies (webpack, Babel, ESLint, etc) right into your project so you have full control over them. All of the commands except `eject` will still work, but they will point to the copied scripts so you can tweak them. At this point you're on your own.
+Le fichier est importé dans `SmartUX_AI_Bots.jsx` et peut être réutilisé dans tout autre composant.
 
-You don't have to ever use `eject`. The curated feature set is suitable for small and middle deployments, and you shouldn't feel obligated to use this feature. However we understand that this tool wouldn't be useful if you couldn't customize it when you are ready for it.
+### Backend — `server.js`
 
-## Learn More
+API Express sur `http://localhost:3001`.
 
-You can learn more in the [Create React App documentation](https://facebook.github.io/create-react-app/docs/getting-started).
+| Méthode | Route | Description |
+|---------|-------|-------------|
+| GET | `/api/prescriptions` | Récupérer toutes les prescriptions |
+| POST | `/api/prescriptions` | Créer une prescription |
+| PATCH | `/api/prescriptions/:id` | Mettre à jour une prescription |
+| POST | `/api/claude` | Proxy vers l'API Groq (LLM) |
 
-To learn React, check out the [React documentation](https://reactjs.org/).
+Base SQLite (`sillage.db`) créée automatiquement au premier lancement.
 
-### Code Splitting
+---
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/code-splitting](https://facebook.github.io/create-react-app/docs/code-splitting)
+## Flux d'authentification
 
-### Analyzing the Bundle Size
+L'application est **protégée par une authentification biométrique** avant tout accès.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size](https://facebook.github.io/create-react-app/docs/analyzing-the-bundle-size)
+- Au lancement, seul l'écran d'authentification est affiché (pas d'onglets visibles)
+- Trois méthodes disponibles : **Reconnaissance faciale**, **Badge RFID**, **Mot de passe**
+- Après validation, l'utilisateur accède à l'application complète
+- Son nom, titre et niveau d'accès s'affichent dans la barre de navigation
+- Un bouton **✕** permet de se déconnecter et revenir à l'écran d'authentification
 
-### Making a Progressive Web App
+Éléments supprimés de l'écran d'authentification :
+- Sélection manuelle du personnel (supprimée — la biométrie/badge identifie l'utilisateur automatiquement)
+- Flux d'authentification (diagramme d'étapes)
+- Bannière d'information "Base personnel SILLAGE"
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app](https://facebook.github.io/create-react-app/docs/making-a-progressive-web-app)
+---
 
-### Advanced Configuration
+## Onglets principaux
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/advanced-configuration](https://facebook.github.io/create-react-app/docs/advanced-configuration)
+| Onglet | Description |
+|--------|-------------|
+| **NLP Contextuel** | Saisie libre en français → prescription structurée via LLM (Groq) |
+| **Actes & Ordres** | Consultation et gestion des prescriptions en base SQLite |
 
-### Deployment
+L'onglet **Biométrique** a été supprimé : l'authentification se fait désormais en amont, avant l'accès à l'application.
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/deployment](https://facebook.github.io/create-react-app/docs/deployment)
+---
 
-### `npm run build` fails to minify
+## Sous-onglets (barre secondaire)
 
-This section has moved here: [https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify](https://facebook.github.io/create-react-app/docs/troubleshooting#npm-run-build-fails-to-minify)
+### Dossier
+
+Affiche la liste complète des **6 patients** avec :
+
+- Groupe sanguin coloré, nom, IPP, service, chambre, âge, sexe
+- Tags **ALLERGIE** (rouge) et **URGENT** (orange) si applicable
+- Flèche ▾ pour déplier/replier la fiche complète de chaque patient
+
+Quand la fiche est dépliée :
+- **Colonne gauche** : tableau d'informations (date de naissance, âge, sexe, groupe sanguin, service, chambre) + allergies connues
+- **Colonne droite** : liste des Actes & Ordres associés au patient (médicament, dosage, voie, fréquence, indication, priorité, statut de validation)
+
+Si un patient n'a aucun acte, la colonne droite affiche *"Aucun acte ou ordre enregistré"*.
+
+Les cartes sans actes sont repliées par défaut. Les cartes avec actes sont dépliées par défaut.
+
+### Observations / Prescriptions / Labo
+
+Modules en cours de développement — connectés au système SILLAGE.
+
+---
+
+## Intégration LLM
+
+- L'onglet NLP envoie la saisie libre vers `POST /api/claude`
+- Le backend proxie vers **Groq API** (modèle `llama-3.3-70b-versatile`)
+- La réponse est parsée par `mapNLPToPrescription()` pour remplir les champs de prescription
+- La clé API Groq est dans `server.js` — à déplacer dans un fichier `.env`
+
+---
+
+## Contraintes techniques
+
+- **Pas de TypeScript** — JavaScript/JSX uniquement
+- **Pas de gestionnaire d'état** — `useState` / `useRef` / `useCallback` uniquement
+- **Pas de CSS externe** — styles inline uniquement (Google Fonts : DM Sans + Space Mono)
+- **Biométrie simulée** — pas de vraie reconnaissance faciale ; le flux caméra est décoratif
+- **Données patients/personnel/médicaments** — hardcodées dans `src/database.js`, pas fetchées depuis la base
