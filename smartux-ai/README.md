@@ -4,6 +4,23 @@ Prototype d'interface hospitalière en français pour le projet **SILLAGE** (CRI
 
 ---
 
+## Installation
+
+```bash
+npm install
+```
+
+### Configuration de la clé API (obligatoire pour le NLP)
+
+Copiez le fichier d'exemple et ajoutez votre clé Groq :
+
+```bash
+cp .env.example .env
+```
+
+Éditez `.env` et remplacez `your_groq_api_key_here` par votre clé.
+Obtenez une clé gratuite sur **[console.groq.com](https://console.groq.com)**.
+
 ## Lancer le projet
 
 Deux serveurs doivent tourner en parallèle :
@@ -120,7 +137,7 @@ Modules en cours de développement — connectés au système SILLAGE.
 - L'onglet NLP envoie la saisie libre vers `POST /api/claude`
 - Le backend proxie vers **Groq API** (modèle `llama-3.3-70b-versatile`)
 - La réponse est parsée par `mapNLPToPrescription()` pour remplir les champs de prescription
-- La clé API Groq est dans `server.js` — à déplacer dans un fichier `.env`
+- La clé API Groq est lue depuis la variable d'environnement `GROQ_API_KEY` (fichier `.env`)
 
 ---
 

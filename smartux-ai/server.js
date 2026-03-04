@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const Database = require("better-sqlite3");
@@ -95,7 +96,9 @@ app.patch("/api/prescriptions/:id", (req, res) => {
 });
 
 // Route Groq NLP
-const GROQ_API_KEY = "Mets ta clé API ici pour faire le marcher";
+// ⚠️  Créez un fichier .env à la racine du projet avec : GROQ_API_KEY=votre_clé
+// Obtenez votre clé gratuite sur https://console.groq.com
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 app.post("/api/claude", async (req, res) => {
   try {
