@@ -112,6 +112,47 @@ const DB_MEDICAMENTS = [
   { id:45, brand:"Ringer Lactate",    inn:"Ringer Lactate",          form:"Injectable",   dosage:"500mL / 1L",     route:"IV",       category:"Soluté de remplissage" },
 ];
 
+// Allergies connues par patient (pour détection de conflits)
+const KNOWN_ALLERGIES = {
+  2: ["pénicilline", "amoxicilline", "augmentin", "clamoxyl"],
+  3: ["ibuprofène", "advil", "kétoprofène", "profenid"],
+};
+
+// Correction automatique des fautes de frappe courantes
+const TYPO_CORRECTIONS = {
+  "dolipran":    "Doliprane", "dolipranr":    "Doliprane", "dolipranne": "Doliprane",
+  "amoxiciline": "Amoxicilline",
+  "paracetamol": "Paracétamol",
+  "ibuprofene":  "Ibuprofène",
+  "morphyne":    "Morphine",   "morfine":      "Morphine",
+  "dupond":      "Dupont",     "dupon":        "Dupont",
+  "lefevre":     "Lefevre",    "lefèvre":      "Lefevre",
+  "hakimy":      "Hakimi",
+};
+
+function autoCorrect(text) {
+  let corrected = text;
+  const corrections = [];
+  Object.entries(TYPO_CORRECTIONS).forEach(([typo, correct]) => {
+    const regex = new RegExp(typo, "gi");
+    if (regex.test(corrected)) {
+      corrected = corrected.replace(regex, correct);
+      corrections.push({ from: typo, to: correct });
+    }
+  });
+  return { corrected, corrections };
+}
+
+// Détection de conflits allergie/médicament
+function detectAllergyConflict(nlpData, patientMatch) {
+  if (!patientMatch || !nlpData.medicament) return null;
+  const allergies = KNOWN_ALLERGIES[patientMatch.patient_id] || [];
+  const drug = nlpData.medicament.toLowerCase();
+  const conflict = allergies.find(a => drug.includes(a) || a.includes(drug));
+  if (conflict) return `ALERTE ALLERGIE : ${patientMatch.first_name} ${patientMatch.last_name} est allergique à ${conflict}`;
+  return null;
+}
+
 // NLP autocomplete: patient names, drug names, common phrases, medical terms
 const AUTOCOMPLETE_CORPUS = [
   // Patient names
@@ -195,6 +236,8 @@ function mapNLPToPrescription(nlpData, rawText) {
     ? "NORMALE"
     : null;
 
+  const allergyAlert = detectAllergyConflict(nlpData, patientMatch);
+
   return {
     prescription_id:     Date.now(),
     patient_id:          patientMatch?.patient_id  || null,
@@ -215,6 +258,7 @@ function mapNLPToPrescription(nlpData, rawText) {
     chambre:             nlpData.chambre    || null,
     priorite,
     allergie_signalee:   nlpData.allergie   || null,
+    allergyAlert,
     action:              nlpData.action     || "prescrire",
     examen:              nlpData.examen     || null,
     notes:               nlpData.note       || null,
@@ -287,6 +331,80 @@ Phrase : "${text}"`,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  EXPORT PDF (via jsPDF CDN)
+// ─────────────────────────────────────────────────────────────────────────────
+function exportPDF(rx) {
+  const load = () => {
+    const { jsPDF } = window.jspdf;
+    const doc = new jsPDF();
+    const now = new Date().toLocaleString("fr-FR");
+    doc.setFillColor(15, 76, 117);
+    doc.rect(0, 0, 210, 30, "F");
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.setFont("helvetica", "bold");
+    doc.text("SILLAGE — Acte & Ordre Médical", 14, 14);
+    doc.setFontSize(9);
+    doc.setFont("helvetica", "normal");
+    doc.text(`Généré le ${now}`, 14, 22);
+    doc.setTextColor(30, 30, 46);
+    doc.setFontSize(13);
+    doc.setFont("helvetica", "bold");
+    doc.text(`Action : ${(rx.action || "prescrire").toUpperCase()}`, 14, 42);
+    if (rx.allergyAlert) {
+      doc.setFillColor(239, 68, 68);
+      doc.rect(14, 46, 182, 10, "F");
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(9);
+      doc.text(rx.allergyAlert, 18, 53);
+      doc.setTextColor(30, 30, 46);
+    }
+    const fields = [
+      ["Patient",          rx.patient_name_free],
+      ["Médicament",       rx.drug_name_free],
+      ["Dosage",           rx.dosage],
+      ["Forme",            rx.form],
+      ["Voie",             rx.route],
+      ["Fréquence",        rx.frequency],
+      ["Indication",       rx.indication],
+      ["Service",          rx.service],
+      ["Chambre",          rx.chambre],
+      ["Priorité",         rx.priorite],
+      ["Allergie",         rx.allergie_signalee],
+      ["Examen",           rx.examen],
+      ["Notes",            rx.notes],
+      ["Confiance NLP",    rx.nlp_confidence],
+      ["Phrase originale", rx.nlp_raw_text],
+    ].filter(([, v]) => v);
+    let y = rx.allergyAlert ? 65 : 52;
+    doc.setFontSize(10);
+    fields.forEach(([label, val]) => {
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(107, 114, 128);
+      doc.text(`${label} :`, 14, y);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(30, 30, 46);
+      const lines = doc.splitTextToSize(String(val), 130);
+      doc.text(lines, 60, y);
+      y += lines.length * 7;
+      if (y > 270) { doc.addPage(); y = 20; }
+    });
+    doc.setFillColor(245, 243, 238);
+    doc.rect(0, 280, 210, 17, "F");
+    doc.setFontSize(8);
+    doc.setTextColor(107, 114, 128);
+    doc.text("Document généré automatiquement par SmartUX-AI · Projet CRIStAL × Centrale Lille", 14, 289);
+    doc.text(`ID : ${rx.prescription_id}`, 170, 289);
+    doc.save(`SILLAGE_${rx.action || "acte"}_${rx.patient_name_free || "patient"}_${Date.now()}.pdf`);
+  };
+  if (window.jspdf) { load(); return; }
+  const script = document.createElement("script");
+  script.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+  script.onload = load;
+  document.head.appendChild(script);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  SHARED UI ATOMS
 // ─────────────────────────────────────────────────────────────────────────────
 const Badge = ({ children, color = ACCENT, small = false }) => (
@@ -309,58 +427,92 @@ const Btn = ({ children, onClick, disabled, variant="primary", style:s }) => {
     accent:  { background:ACCENT2, color:"#fff" },
     ghost:   { background:"transparent", color:ACCENT, border:`1.5px solid ${ACCENT}` },
     green:   { background:GREEN, color:"#fff" },
+    red:     { background:RED, color:"#fff" },
   };
   return <button onClick={onClick} disabled={disabled} style={{...base,...variants[variant],...s}}>{children}</button>;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  AUTOCOMPLETE INPUT
+//  AUTOCOMPLETE INPUT  (with voice recognition + command history)
 // ─────────────────────────────────────────────────────────────────────────────
 function AutocompleteInput({ value, onChange, onSubmit, loading, placeholder }) {
   const [suggestions, setSuggestions] = useState([]);
   const [showSugg, setShowSugg]       = useState(false);
   const [selIdx, setSelIdx]           = useState(-1);
-  const inputRef = useRef(null);
+  const [listening, setListening]     = useState(false);
+  const [cmdHistory, setCmdHistory]   = useState([]);
+  const [histIdx, setHistIdx]         = useState(-1);
+  const inputRef      = useRef(null);
+  const recognitionRef = useRef(null);
 
-  // Compute suggestions from last typed word/phrase
+  // Voice recognition setup
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    const rec = new SpeechRecognition();
+    rec.lang = "fr-FR";
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onresult = (e) => { onChange(e.results[0][0].transcript); setListening(false); };
+    rec.onend = () => setListening(false);
+    recognitionRef.current = rec;
+  }, [onChange]);
+
+  const toggleVoice = () => {
+    if (!recognitionRef.current) return;
+    if (listening) { recognitionRef.current.stop(); setListening(false); }
+    else           { recognitionRef.current.start(); setListening(true); }
+  };
+
+  // Autocomplete suggestions
   useEffect(() => {
     if (!value.trim()) { setSuggestions([]); return; }
     const lastWord = value.split(" ").slice(-1)[0].toLowerCase();
     if (lastWord.length < 2) { setSuggestions([]); return; }
-
-    const matches = AUTOCOMPLETE_CORPUS
-      .filter(s => s.toLowerCase().includes(lastWord))
-      .slice(0, 6);
+    const matches = AUTOCOMPLETE_CORPUS.filter(s => s.toLowerCase().includes(lastWord)).slice(0, 6);
     setSuggestions(matches);
     setSelIdx(-1);
   }, [value]);
 
   const applySuggestion = (s) => {
-    // If suggestion is a template (contains []), keep it and just insert
-    // Otherwise, replace the last word with the suggestion
     const words = value.split(" ");
-    if (s.includes("[")) {
-      onChange(s);
-    } else {
-      words[words.length - 1] = s;
-      onChange(words.join(" "));
-    }
+    if (s.includes("[")) { onChange(s); }
+    else { words[words.length - 1] = s; onChange(words.join(" ")); }
     setSuggestions([]);
     setShowSugg(false);
     inputRef.current?.focus();
   };
 
   const handleKeyDown = (e) => {
+    // Navigate command history with ↑↓ when input is empty
+    if (!value.trim()) {
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        const ni = Math.min(histIdx + 1, cmdHistory.length - 1);
+        setHistIdx(ni);
+        if (cmdHistory[ni]) onChange(cmdHistory[ni]);
+        return;
+      }
+      if (e.key === "ArrowDown") {
+        e.preventDefault();
+        const ni = Math.max(histIdx - 1, -1);
+        setHistIdx(ni);
+        onChange(ni >= 0 ? cmdHistory[ni] : "");
+        return;
+      }
+    }
     if (showSugg && suggestions.length > 0) {
       if (e.key === "ArrowDown") { e.preventDefault(); setSelIdx(i => Math.min(i+1, suggestions.length-1)); return; }
       if (e.key === "ArrowUp")   { e.preventDefault(); setSelIdx(i => Math.max(i-1, -1)); return; }
-      if (e.key === "Tab" && suggestions.length > 0) {
+      if (e.key === "Tab") {
         e.preventDefault();
         applySuggestion(suggestions[selIdx >= 0 ? selIdx : 0]);
         return;
       }
     }
     if (e.key === "Enter" && !loading) {
+      if (value.trim()) setCmdHistory(h => [value.trim(), ...h.slice(0, 19)]);
+      setHistIdx(-1);
       setSuggestions([]);
       setShowSugg(false);
       onSubmit(value);
@@ -368,27 +520,49 @@ function AutocompleteInput({ value, onChange, onSubmit, loading, placeholder }) 
     if (e.key === "Escape") { setSuggestions([]); setShowSugg(false); }
   };
 
+  const hasSpeech = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
   return (
     <div style={{ flex:1, position:"relative" }}>
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={e => { onChange(e.target.value); setShowSugg(true); }}
-        onKeyDown={handleKeyDown}
-        onFocus={() => setShowSugg(true)}
-        onBlur={() => setTimeout(() => setShowSugg(false), 150)}
-        placeholder={placeholder || "Ex : Prescrire 500mg de Doliprane per os 3x/jour pour le patient Dupont…"}
-        style={{
-          width:"100%", boxSizing:"border-box",
-          padding:"12px 18px", borderRadius:10,
-          border:`1.5px solid ${showSugg && suggestions.length ? ACCENT : "#D1D5DB"}`,
-          fontFamily:"'DM Sans', sans-serif", fontSize:14, outline:"none",
-          transition:"border-color .2s",
-        }}
-      />
+      <div style={{ display:"flex", gap:8 }}>
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={e => { onChange(e.target.value); setShowSugg(true); setHistIdx(-1); }}
+          onKeyDown={handleKeyDown}
+          onFocus={() => setShowSugg(true)}
+          onBlur={() => setTimeout(() => setShowSugg(false), 150)}
+          placeholder={placeholder || "Ex : Prescrire 500mg de Doliprane per os 3x/jour pour le patient Dupont…"}
+          style={{
+            flex:1, boxSizing:"border-box",
+            padding:"12px 18px", borderRadius:10,
+            border:`1.5px solid ${showSugg && suggestions.length ? ACCENT : "#D1D5DB"}`,
+            fontFamily:"'DM Sans', sans-serif", fontSize:14, outline:"none",
+            transition:"border-color .2s",
+          }}
+        />
+        {/* Voice button — only shown if SpeechRecognition is available */}
+        {hasSpeech && (
+          <button onClick={toggleVoice} title={listening ? "Arrêter la dictée" : "Dicter"} style={{
+            width:44, height:44, borderRadius:10, border:"none", flexShrink:0,
+            background: listening ? RED : ACCENT + "15",
+            color: listening ? "#fff" : ACCENT,
+            cursor:"pointer", display:"grid", placeItems:"center",
+            animation: listening ? "voicePulse 1s infinite" : "none",
+          }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+        )}
+      </div>
       {/* Hint bar */}
       <div style={{ fontSize:11, color:MUTED, marginTop:3, paddingLeft:4 }}>
-        ↹ Tab pour compléter · ↑↓ naviguer · Entrée pour analyser
+        ↹ Tab pour compléter · ↑↓ historique · Entrée pour analyser
+        {listening && <span style={{ color:RED, marginLeft:8 }}>● Écoute en cours…</span>}
       </div>
       {/* Dropdown */}
       {showSugg && suggestions.length > 0 && (
@@ -399,24 +573,20 @@ function AutocompleteInput({ value, onChange, onSubmit, loading, placeholder }) 
           overflow:"hidden",
         }}>
           {suggestions.map((s, i) => (
-            <div
-              key={i}
-              onMouseDown={() => applySuggestion(s)}
-              style={{
-                padding:"9px 16px", fontSize:13,
-                cursor:"pointer", fontFamily:"'DM Sans', sans-serif",
-                background: i === selIdx ? ACCENT+"12" : "transparent",
-                borderBottom: i < suggestions.length-1 ? "1px solid #F1F5F9" : "none",
-                color: s.includes("[") ? MUTED : "#1A1A2E",
-                fontStyle: s.includes("[") ? "italic" : "normal",
-              }}
-            >
-              {/* Highlight matching part */}
-              <span>{s}</span>
+            <div key={i} onMouseDown={() => applySuggestion(s)} style={{
+              padding:"9px 16px", fontSize:13, cursor:"pointer",
+              fontFamily:"'DM Sans', sans-serif",
+              background: i === selIdx ? ACCENT+"12" : "transparent",
+              borderBottom: i < suggestions.length-1 ? "1px solid #F1F5F9" : "none",
+              color: s.includes("[") ? MUTED : "#1A1A2E",
+              fontStyle: s.includes("[") ? "italic" : "normal",
+            }}>
+              {s}
             </div>
           ))}
         </div>
       )}
+      <style>{`@keyframes voicePulse{0%,100%{opacity:1}50%{opacity:0.55}}`}</style>
     </div>
   );
 }
@@ -582,11 +752,15 @@ function NLPBot({ onPrescription }) {
     }
 
     // ── Normal NLP flow ──────────────────────────────────────────────────────
-    setHistory(h => [...h, { role:"user", text:text.trim() }]);
+    const { corrected, corrections } = autoCorrect(text.trim());
+    setHistory(h => [...h, {
+      role:"user", text:corrected,
+      corrections: corrections.length > 0 ? corrections : null,
+    }]);
     setInput("");
     setLoading(true);
-    const structured = await parseWithClaude(text.trim());
-    const rx = mapNLPToPrescription(structured, text.trim());
+    const structured = await parseWithClaude(corrected);
+    const rx = mapNLPToPrescription(structured, corrected);
     setHistory(h => [...h, { role:"bot", text:structured, rx }]);
     // Ask for delay
     setHistory(h => [...h, { role:"bot-question", text:"Quel est le délai imparti pour cet acte ? (ex : 2h, 24h, 3 jours, ou « aucun »)" }]);
@@ -639,8 +813,15 @@ function NLPBot({ onPrescription }) {
           </div>
         )}
         {history.map((m, i) => m.role === "user" ? (
-          <div key={i} style={{ alignSelf:"flex-end", background:ACCENT, color:"#fff", padding:"10px 16px", borderRadius:"14px 14px 4px 14px", maxWidth:"80%", fontSize:14, lineHeight:1.5 }}>
-            {m.text}
+          <div key={i} style={{ alignSelf:"flex-end", maxWidth:"80%" }}>
+            <div style={{ background:ACCENT, color:"#fff", padding:"10px 16px", borderRadius:"14px 14px 4px 14px", fontSize:14, lineHeight:1.5 }}>
+              {m.text}
+            </div>
+            {m.corrections && (
+              <div style={{ fontSize:11, color:AMBER, marginTop:3, textAlign:"right" }}>
+                Corrigé : {m.corrections.map(c => `"${c.from}" → "${c.to}"`).join(", ")}
+              </div>
+            )}
           </div>
         ) : m.role === "bot-question" ? (
           /* ── Question délai ── */
@@ -654,27 +835,42 @@ function NLPBot({ onPrescription }) {
             {m.text}
             {/* Show save button after delay is set */}
             {m.rx && !saved[m.rx.prescription_id] && (
-              <div style={{ marginTop:10, display:"flex", gap:8, alignItems:"center" }}>
+              <div style={{ marginTop:10, display:"flex", gap:8, alignItems:"center", flexWrap:"wrap" }}>
                 <Btn variant="green" style={{ padding:"7px 16px", fontSize:12 }} onClick={() => handleSave(m.rx)}>
                   Enregistrer dans SILLAGE
                 </Btn>
+                <button onClick={() => exportPDF(m.rx)} style={{ padding:"7px 14px", borderRadius:8, border:`1px solid ${ACCENT}`, background:"#fff", color:ACCENT, fontSize:12, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans', sans-serif" }}>
+                   PDF
+                </button>
                 <span style={{ fontSize:11, color:MUTED }}>
                   {JSON.parse(m.rx.nlp_fields_auto || "[]").length} champs auto-remplis
                 </span>
               </div>
             )}
             {m.rx && saved[m.rx.prescription_id] && (
-              <span style={{ display:"block", marginTop:8, fontSize:12, color:GREEN, fontWeight:600 }}>✓ Enregistré dans SILLAGE</span>
+              <div style={{ marginTop:8, display:"flex", gap:8, alignItems:"center" }}>
+                <span style={{ fontSize:12, color:GREEN, fontWeight:600 }}>✓ Enregistré dans SILLAGE</span>
+                <button onClick={() => exportPDF(m.rx)} style={{ padding:"5px 12px", borderRadius:7, border:`1px solid ${ACCENT}`, background:"#fff", color:ACCENT, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans', sans-serif" }}>
+                   Exporter PDF
+                </button>
+              </div>
             )}
           </div>
         ) : (
           <div key={i} style={{ alignSelf:"flex-start", maxWidth:"96%" }}>
-            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8 }}>
+            <div style={{ display:"flex", gap:8, alignItems:"center", marginBottom:8, flexWrap:"wrap" }}>
               <Badge color={ACCENT2}>Données structurées extraites</Badge>
               {m.rx?._matched_patient && <Badge color={GREEN} small>{m.rx._matched_patient.first_name} {m.rx._matched_patient.last_name}</Badge>}
               {m.rx?._matched_drug    && <Badge color={ACCENT} small>{m.rx._matched_drug.brand}</Badge>}
               {m.rx?.nlp_confidence   && <Badge color={m.rx.nlp_confidence==="HIGH" ? GREEN : m.rx.nlp_confidence==="MEDIUM" ? AMBER : RED} small>Conf. {m.rx.nlp_confidence}</Badge>}
             </div>
+
+            {/* Allergy alert */}
+            {m.rx?.allergyAlert && (
+              <div style={{ background:RED+"15", border:`1px solid ${RED}40`, borderRadius:8, padding:"8px 14px", marginBottom:8, color:RED, fontWeight:700, fontSize:13 }}>
+                {m.rx.allergyAlert}
+              </div>
+            )}
 
             {/* Extracted data table */}
             <div style={{ background:"#F8FAFC", border:"1px solid #E2E8F0", borderRadius:10, padding:14, fontFamily:"'Space Mono', monospace", fontSize:12, lineHeight:1.6, overflowX:"auto" }}>
@@ -720,7 +916,10 @@ function NLPBot({ onPrescription }) {
                   ))}
                 </div>
                 <div style={{ padding:"8px 14px 12px", borderTop:"1px solid #F1F5F9", display:"flex", gap:8, alignItems:"center" }}>
-                  <span style={{ fontSize:12, color:AMBER, fontStyle:"italic" }}>En attente du délai imparti…</span>
+                  <span style={{ fontSize:12, color:AMBER, fontStyle:"italic", flex:1 }}>En attente du délai imparti…</span>
+                  <button onClick={() => exportPDF(m.rx)} style={{ padding:"5px 12px", borderRadius:7, border:`1px solid ${ACCENT}`, background:"#fff", color:ACCENT, fontSize:11, fontWeight:600, cursor:"pointer", fontFamily:"'DM Sans', sans-serif" }}>
+                     PDF
+                  </button>
                 </div>
               </div>
             )}
@@ -813,10 +1012,16 @@ function RxTab({ prescriptions, onUpdate }) {
     <div style={{
       background: CARD,
       borderRadius: 14,
-      border: `1px solid ${borderColor}`,
+      border: `1px solid ${rx.allergyAlert ? RED+"60" : borderColor}`,
       overflow: "hidden",
       transition: "border-color .2s",
     }}>
+      {/* Allergy alert banner */}
+      {rx.allergyAlert && (
+        <div style={{ background:RED, padding:"6px 18px", color:"#fff", fontSize:12, fontWeight:700 }}>
+          {rx.allergyAlert}
+        </div>
+      )}
       {/* Header */}
       <div style={{
         padding: "11px 18px",
@@ -878,6 +1083,9 @@ function RxTab({ prescriptions, onUpdate }) {
           </div>
         )}
         <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={() => exportPDF(rx)} style={{ padding: "6px 14px", borderRadius: 8, border: `1px solid ${ACCENT}`, background: "#fff", color: ACCENT, fontSize: 12, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif" }}>
+            Exporter PDF
+          </button>
           {!rx.is_validated && !rx.is_cancelled && (
             <>
               <button
@@ -1214,11 +1422,11 @@ function BioBot() {
                       {u.role_label} · {u.dept}
                     </div>
                   </div>
-                  {u.biometric_enrolled ? (
-                    <span title="Biométrie enrolée" style={{ fontSize:14 }}>🟢</span>
-                  ) : (
-                    <span title="Biométrie non enrolée" style={{ fontSize:14 }}>⚪</span>
-                  )}
+                  <span title={u.biometric_enrolled ? "Biométrie enrolée" : "Non enrolée"} style={{
+                    width:8, height:8, borderRadius:"50%", flexShrink:0,
+                    background: u.biometric_enrolled ? GREEN : "#D1D5DB",
+                    display:"inline-block",
+                  }} />
                 </button>
               ))}
             </div>

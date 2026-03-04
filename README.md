@@ -182,14 +182,19 @@ Le projet fournit une base SQL complète **compatible SQLite et PostgreSQL** (aj
 
 Le bot NLP accepte des phrases médicales libres en français et :
 
-1. Envoie le texte au serveur local (`POST http://localhost:3001/api/claude`), qui appelle l'API **Groq** avec le modèle `llama-3.3-70b-versatile`
-2. Extrait un JSON structuré : `patient`, `medicament`, `dose`, `voie`, `frequence`, `diagnostic`, `service`, `priorite`, `chambre`, `allergie`, `action`, `examen`, `note`
-3. **Mappe les champs extraits sur les colonnes de la table `prescriptions`** — correspondance patient via `DB_PATIENTS`, médicament via `DB_MEDICAMENTS`
-4. Affiche un aperçu de prescription avec badges de correspondance (patient, médicament) et indicateur de confiance (HIGH / MEDIUM / LOW)
-5. **Pose une question sur le délai imparti** après extraction : "Quel est le délai imparti pour cet acte ? (ex : 2h, 24h, 3 jours, ou « aucun »)" — l'`echeance` est calculée et stockée sur la prescription
-6. Permet au clinicien d'**enregistrer dans SILLAGE** via le serveur API (POST `/api/prescriptions`)
+1. **Corrige automatiquement les fautes de frappe** courantes (`TYPO_CORRECTIONS`) avant l'envoi — une notice de correction s'affiche dans le chat
+2. Envoie le texte au serveur local (`POST http://localhost:3001/api/claude`), qui appelle l'API **Groq** avec le modèle `llama-3.3-70b-versatile`
+3. Extrait un JSON structuré : `patient`, `medicament`, `dose`, `voie`, `frequence`, `diagnostic`, `service`, `priorite`, `chambre`, `allergie`, `action`, `examen`, `note`
+4. **Détecte les conflits allergie/médicament** (`KNOWN_ALLERGIES`) — si le médicament prescrit figure dans les allergies connues du patient, une bannière d'alerte rouge s'affiche immédiatement dans le chat et sur la carte de prescription
+5. **Mappe les champs extraits sur les colonnes de la table `prescriptions`** — correspondance patient via `DB_PATIENTS`, médicament via `DB_MEDICAMENTS`
+6. Affiche un aperçu de prescription avec badges de correspondance (patient, médicament) et indicateur de confiance (HIGH / MEDIUM / LOW)
+7. **Pose une question sur le délai imparti** après extraction : "Quel est le délai imparti pour cet acte ? (ex : 2h, 24h, 3 jours, ou « aucun »)" — l'`echeance` est calculée et stockée sur la prescription
+8. Permet au clinicien d'**enregistrer dans SILLAGE** via le serveur API (POST `/api/prescriptions`)
+9. **Exporter en PDF** : chaque prescription peut être exportée via le bouton "Exporter PDF" (librairie jsPDF chargée depuis CDN). Le PDF inclut l'en-tête SILLAGE, la bannière allergie si applicable, tous les champs extraits, et un pied de page avec l'identifiant de prescription
 
-**Autocomplete (`AutocompleteInput`)** : suggestions en cours de frappe depuis la base de données (noms de patients, médicaments, gabarits de phrases médicales, termes courants). Navigation au clavier : Tab pour accepter, ↑↓ pour naviguer, Entrée pour soumettre.
+**Autocomplete (`AutocompleteInput`)** : suggestions en cours de frappe depuis la base de données (noms de patients, médicaments, gabarits de phrases médicales, termes courants). Navigation au clavier : Tab pour accepter, ↑↓ pour naviguer dans l'historique des commandes, Entrée pour soumettre.
+
+**Saisie vocale** : si le navigateur supporte l'API Web Speech (`SpeechRecognition`), un bouton microphone s'affiche à droite du champ de saisie. Cliquez pour dicter en français (`fr-FR`) — la transcription remplace automatiquement le texte du champ.
 
 ### Onglet 2 — Sécurité Biométrique
 
@@ -247,7 +252,7 @@ Les urgents ne sont pas comptés dans le badge orange (évite le doublon).
 | ↳ Délai dépassé | Rouge | Traité après l'échéance |
 | ↳ Dans les délais | Vert | Traité avant l'échéance |
 
-Chaque carte affiche : médicament/acte, patient, dosage, voie, fréquence, service, chambre, action, allergie, phrase NLP originale (en italique), **délai restant ou dépassé en temps réel** (ex. "2h restantes", "Dépassé depuis 15 min"). Actions : **Valider** / **Annuler** pour les actes en attente.
+Chaque carte affiche : médicament/acte, patient, dosage, voie, fréquence, service, chambre, action, allergie, phrase NLP originale (en italique), **délai restant ou dépassé en temps réel** (ex. "2h restantes", "Dépassé depuis 15 min"). Une bannière rouge s'affiche en haut de la carte si une **alerte allergie** est détectée. Actions : **Valider** / **Annuler** / **Exporter PDF** pour chaque acte.
 
 ---
 
@@ -295,7 +300,7 @@ UX/
     ├── proxy.js                — Proxy CORS optionnel (port 8080)
     ├── sillage.db              — Base SQLite (créée au 1er démarrage du serveur)
     └── src/
-        ├── SmartUX_AI_Bots.jsx — Application complète (~1 500 lignes)
+        ├── SmartUX_AI_Bots.jsx — Application complète (~1 680 lignes)
         ├── App.js
         └── index.js
 ```

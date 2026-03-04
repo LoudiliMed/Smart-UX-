@@ -662,9 +662,23 @@ INSERT INTO hospitalizations (patient_id, ward_id, room_number, bed_number,
 INSERT INTO allergies (patient_id, substance, allergy_type, reaction, severity, onset_date, recorded_by) VALUES
 (1, 'Pénicilline',    'MEDICAMENT',    'Urticaire généralisée',        'MODEREE', '1990-01-01', 1),
 (1, 'Latex',          'ENVIRONNEMENT', 'Dermatite de contact',         'LEGERE',  '2005-06-01', 1),
-(2, 'Aspirine',       'MEDICAMENT',    'Bronchospasme',                'SEVERE',  '2010-03-15', 2),
-(3, 'Iode (iodure)',  'MEDICAMENT',    'Réaction anaphylactique',      'SEVERE',  '2020-08-10', 4),
-(5, 'Metformine',     'MEDICAMENT',    'Intolérance digestive sévère', 'MODEREE', '2018-01-01', 1);
+(5, 'Metformine',     'MEDICAMENT',    'Intolerance digestive sévère', 'MODEREE', '2018-01-01', 1);
+
+-- Patient 2 (Lefevre Martine) — pénicillines & AINS (source : KNOWN_ALLERGIES)
+INSERT INTO allergies (patient_id, substance, allergy_type, reaction, severity, onset_date, recorded_by) VALUES
+(2, 'Aspirine',       'MEDICAMENT',    'Bronchospasme',                          'SEVERE',  '2010-03-15', 2),
+(2, 'Pénicilline',    'MEDICAMENT',    'Choc anaphylactique',                    'SEVERE',  '2008-05-20', 2),
+(2, 'Amoxicilline',   'MEDICAMENT',    'Urticaire — classe pénicilline',         'SEVERE',  '2008-05-20', 2),
+(2, 'Augmentin',      'MEDICAMENT',    'Urticaire — amoxicilline/clavulanate',   'MODEREE', '2012-11-10', 2),
+(2, 'Clamoxyl',       'MEDICAMENT',    'Urticaire — amoxicilline injectable',    'MODEREE', '2012-11-10', 2);
+
+-- Patient 3 (Hakimi Youssef) — iode & AINS (source : KNOWN_ALLERGIES)
+INSERT INTO allergies (patient_id, substance, allergy_type, reaction, severity, onset_date, recorded_by) VALUES
+(3, 'Iode (iodure)',  'MEDICAMENT',    'Réaction anaphylactique',                'SEVERE',  '2020-08-10', 4),
+(3, 'Ibuprofène',     'MEDICAMENT',    'Bronchospasme — hypersensibilité AINS',  'SEVERE',  '2018-04-03', 3),
+(3, 'Advil',          'MEDICAMENT',    'Bronchospasme — ibuprofène',             'SEVERE',  '2018-04-03', 3),
+(3, 'Kétoprofène',    'MEDICAMENT',    'Urticaire — AINS topique/IV',            'MODEREE', '2019-09-15', 3),
+(3, 'Profenid',       'MEDICAMENT',    'Urticaire — kétoprofène injectable',     'MODEREE', '2019-09-15', 3);
 
 -- ---- 5.10  Medications ---------------------------------------------------------
 INSERT INTO medications (patient_id, stay_id, drug_name, inn_name, dosage, form, route,
