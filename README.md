@@ -8,7 +8,7 @@
 
 SmartUX-AI est un prototype de recherche UX démontrant des interfaces augmentées par l'IA pour **SILLAGE**, le système d'information hospitalier utilisé dans les établissements de santé français. Il explore trois défis HCI :
 
-1. **Saisie en langage naturel** — remplacer les formulaires par du texte libre médical traité par un bot NLP (Claude Sonnet API).
+1. **Saisie en langage naturel** — remplacer les formulaires par du texte libre médical traité par un bot NLP (Groq — modèle Llama 3.3 70B).
 2. **Contrôle d'accès sécurisé** — simulation d'authentification multi-méthodes (biométrie, badge RFID, mot de passe) liée à une base de personnel réelle.
 3. **Gestion des actes et ordres** — suivi des prescriptions avec délais impartis, niveaux d'urgence et historique.
 
@@ -46,6 +46,7 @@ Le serveur démarre sur `http://localhost:3001`. Il gère :
 - `GET  /api/prescriptions` — récupérer toutes les prescriptions depuis `sillage.db`
 - `POST /api/prescriptions` — enregistrer une nouvelle prescription
 - `PATCH /api/prescriptions/:id` — mettre à jour (valider / annuler / modifier)
+- `POST /api/claude` — proxy NLP : reçoit le texte du client React et appelle l'API Groq
 
 **Terminal 2 — Application React (port 3000) :**
 
@@ -96,18 +97,29 @@ Pour réinitialiser le schéma depuis le fichier SQL :
 sqlite3 sillage_new.db < sillage_database.sql
 ```
 
-### Clé API Claude (NLP)
+### Clé API Groq (NLP)
 
-Le bot NLP appelle `https://api.anthropic.com/v1/messages` depuis le navigateur. Pour que ça fonctionne, configurez votre clé API dans la fonction `parseWithClaude()` dans `SmartUX_AI_Bots.jsx` :
+Le bot NLP **ne contacte pas l'API Groq directement depuis le navigateur**. Il passe par le serveur local :
 
-```js
-headers: {
-  "x-api-key": "sk-ant-VOTRE_CLE_ICI",
-  ...
-}
+```
+React (port 3000) → POST /api/claude (port 3001) → API Groq → llama-3.3-70b-versatile
 ```
 
-En production, passez la clé via un proxy backend pour ne pas l'exposer côté client.
+La clé API Groq est stockée dans `server.js` (variable `GROQ_API_KEY`, ligne 98). Pour l'obtenir ou la renouveler : [console.groq.com](https://console.groq.com).
+
+En production, déplacez la clé dans une variable d'environnement pour ne pas la laisser dans le code source :
+
+```js
+// server.js
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+```
+
+```bash
+# Lancement avec variable d'environnement
+GROQ_API_KEY=gsk_... node server.js
+```
+
+Le modèle utilisé est `llama-3.3-70b-versatile` avec `temperature: 0.1` pour des extractions stables et déterministes. Il est appelé avec un prompt structurant qui demande une réponse en JSON médical.
 
 ---
 
@@ -170,7 +182,7 @@ Le projet fournit une base SQL complète **compatible SQLite et PostgreSQL** (aj
 
 Le bot NLP accepte des phrases médicales libres en français et :
 
-1. Envoie le texte à **Claude Sonnet** via `fetch` vers `https://api.anthropic.com/v1/messages`
+1. Envoie le texte au serveur local (`POST http://localhost:3001/api/claude`), qui appelle l'API **Groq** avec le modèle `llama-3.3-70b-versatile`
 2. Extrait un JSON structuré : `patient`, `medicament`, `dose`, `voie`, `frequence`, `diagnostic`, `service`, `priorite`, `chambre`, `allergie`, `action`, `examen`, `note`
 3. **Mappe les champs extraits sur les colonnes de la table `prescriptions`** — correspondance patient via `DB_PATIENTS`, médicament via `DB_MEDICAMENTS`
 4. Affiche un aperçu de prescription avec badges de correspondance (patient, médicament) et indicateur de confiance (HIGH / MEDIUM / LOW)
