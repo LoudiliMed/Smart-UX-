@@ -95,7 +95,7 @@ app.patch("/api/prescriptions/:id", (req, res) => {
 });
 
 // Route Groq NLP
-const GROQ_API_KEY = "REDACTED_GROQ_API_KEY";
+const GROQ_API_KEY = "Mets ta clé API ici pour faire le marcher";
 
 app.post("/api/claude", async (req, res) => {
   try {
