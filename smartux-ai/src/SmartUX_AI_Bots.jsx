@@ -1,134 +1,24 @@
 import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import {
+  DB_PATIENTS,
+  DB_STAFF,
+  DB_MEDICAMENTS,
+  KNOWN_ALLERGIES,
+  TYPO_CORRECTIONS,
+  AUTOCOMPLETE_CORPUS,
+  ACCESS_PERMISSIONS,
+  PERM_LABELS,
+} from "./database";
 
 const ACCENT  = "#0F4C75";
 const ACCENT2 = "#E91E8C";
-const BG      = "#F5F3EE";
+const BG      = "#F0F4F8";
 const CARD    = "#FFFFFF";
 const MUTED   = "#6B7280";
 const GREEN   = "#10B981";
 const AMBER   = "#F59E0B";
 const RED     = "#EF4444";
-
-// ─────────────────────────────────────────────────────────────────────────────
-//  DATABASE CONSTANTS  (seeded from sillage_database.sql)
-// ─────────────────────────────────────────────────────────────────────────────
-
-const DB_PATIENTS = [
-  { patient_id:1, ipp:"IPP-000001", last_name:"Dupont",   first_name:"Jean",    date_of_birth:"1955-06-14", gender:"M", blood_type:"A+",  room:"102", ward:"Cardiologie Conventionnelle" },
-  { patient_id:2, ipp:"IPP-000002", last_name:"Lefevre",  first_name:"Martine", date_of_birth:"1942-11-28", gender:"F", blood_type:"O-",  room:"301", ward:"Neurologie Conventionnelle" },
-  { patient_id:3, ipp:"IPP-000003", last_name:"Hakimi",   first_name:"Youssef", date_of_birth:"1989-03-05", gender:"M", blood_type:"B+",  room:"201", ward:"Chirurgie Digestive" },
-  { patient_id:4, ipp:"IPP-000004", last_name:"Morin",    first_name:"Claire",  date_of_birth:"1998-07-20", gender:"F", blood_type:"AB+", room:"501", ward:"Maternité" },
-  { patient_id:5, ipp:"IPP-000005", last_name:"Tremblay", first_name:"René",    date_of_birth:"1960-01-19", gender:"M", blood_type:"O+",  room:"102", ward:"Cardiologie Conventionnelle" },
-  { patient_id:6, ipp:"IPP-000006", last_name:"Nguyen",   first_name:"Thi Lan", date_of_birth:"1975-09-12", gender:"F", blood_type:"A-",  room:"202", ward:"Chirurgie Orthopédique" },
-];
-
-const DB_STAFF = [
-  { staff_id:1,  employee_number:"EMP-001", title:"Dr",   last_name:"Martin",    first_name:"Sophie",   role_label:"Médecin",             access_level:4, dept:"Cardiologie",          specialty:"Cardiologie",            biometric_enrolled:1, password:"sophie2024"  },
-  { staff_id:2,  employee_number:"EMP-002", title:"Pr",   last_name:"Dubois",    first_name:"Laurent",  role_label:"Médecin",             access_level:4, dept:"Neurologie",           specialty:"Neurologie",             biometric_enrolled:1, password:"laurent2024" },
-  { staff_id:3,  employee_number:"EMP-003", title:"Dr",   last_name:"Bernard",   first_name:"Isabelle", role_label:"Chirurgien",          access_level:4, dept:"Chirurgie Générale",   specialty:"Chirurgie Digestive",    biometric_enrolled:1, password:"isa2024"     },
-  { staff_id:4,  employee_number:"EMP-004", title:"Dr",   last_name:"Leroy",     first_name:"Karim",    role_label:"Anesthésiste-Réanimateur", access_level:4, dept:"Réanimation",     specialty:"Anesthésie-Réanimation", biometric_enrolled:1, password:"karim2024"   },
-  { staff_id:5,  employee_number:"EMP-005", title:"",     last_name:"Moreau",    first_name:"Céline",   role_label:"Cadre de Santé",      access_level:3, dept:"Cardiologie",          specialty:null,                     biometric_enrolled:1, password:"celine2024"  },
-  { staff_id:6,  employee_number:"EMP-006", title:"IDE",  last_name:"Simon",     first_name:"Pierre",   role_label:"Infirmier(e) Diplômé(e) d'État", access_level:3, dept:"Urgences", specialty:null,                biometric_enrolled:0, password:"pierre2024"  },
-  { staff_id:7,  employee_number:"EMP-007", title:"AS",   last_name:"Laurent",   first_name:"Nadia",    role_label:"Aide-Soignant(e)",    access_level:2, dept:"Chirurgie Orthopédique",specialty:null,                   biometric_enrolled:0, password:"nadia2024"   },
-  { staff_id:8,  employee_number:"EMP-008", title:"Dr",   last_name:"Rousseau",  first_name:"Marc",     role_label:"Biologiste Médical",  access_level:4, dept:"Laboratoire",          specialty:"Biologie Médicale",      biometric_enrolled:1, password:"marc2024"    },
-  { staff_id:9,  employee_number:"EMP-009", title:"Dr",   last_name:"Petit",     first_name:"Amina",    role_label:"Radiologue",          access_level:4, dept:"Radiologie",           specialty:"Radiologie",             biometric_enrolled:1, password:"amina2024"   },
-  { staff_id:10, employee_number:"EMP-010", title:"",     last_name:"Garcia",    first_name:"Julien",   role_label:"Stagiaire / Interne", access_level:2, dept:"Neurologie",           specialty:"Interne Neurologie",     biometric_enrolled:0, password:"julien2024"  },
-  { staff_id:11, employee_number:"EMP-011", title:"",     last_name:"Fontaine",  first_name:"Léa",      role_label:"Sage-Femme",          access_level:4, dept:"Maternité",            specialty:"Obstétrique",            biometric_enrolled:1, password:"lea2024"     },
-  { staff_id:12, employee_number:"EMP-012", title:"",     last_name:"Renard",    first_name:"Thomas",   role_label:"Pharmacien",          access_level:3, dept:"Pharmacie",            specialty:"Pharmacie Clinique",     biometric_enrolled:0, password:"thomas2024"  },
-  { staff_id:13, employee_number:"EMP-013", title:"",     last_name:"Chevalier", first_name:"Marie",    role_label:"Secrétaire Médicale", access_level:2, dept:"Administration",       specialty:null,                     biometric_enrolled:0, password:"marie2024"   },
-  { staff_id:14, employee_number:"EMP-014", title:"",     last_name:"Bonnet",    first_name:"Paul",     role_label:"Agent d'Accueil",     access_level:1, dept:"Administration",       specialty:null,                     biometric_enrolled:0, password:"paul2024"    },
-  { staff_id:15, employee_number:"EMP-015", title:"",     last_name:"Dupont",    first_name:"Hélène",   role_label:"Administrateur Système", access_level:5, dept:"Administration",    specialty:null,                     biometric_enrolled:1, password:"helene2024"  },
-  // ── Compte administrateur ──────────────────────────────────────────────────
-  { staff_id:16, employee_number:"EMP-ADM", title:"",     last_name:"",          first_name:"Admin",    role_label:"Super Administrateur",access_level:5, dept:"Administration Système",specialty:"Gestion des accès",      biometric_enrolled:1, password:"admin"       },
-];
-
-// Permissions per access level (simplified from role_permissions table)
-const ACCESS_PERMISSIONS = {
-  1: ["PAT_VIEW_ID"],
-  2: ["PAT_VIEW_ID","PAT_VIEW_CLINICAL","PAT_VIEW_MEDS"],
-  3: ["PAT_VIEW_ID","PAT_VIEW_CLINICAL","PAT_EDIT_CLINICAL","PAT_VIEW_LABS","PAT_VIEW_MEDS","PAT_VIEW_IMAGING","STAFF_VIEW"],
-  4: ["PAT_VIEW_ID","PAT_VIEW_CLINICAL","PAT_EDIT_CLINICAL","PAT_VIEW_LABS","PAT_VIEW_IMAGING","PAT_PRESCRIBE","PAT_VIEW_MEDS","PAT_ADMIT","STAFF_VIEW","BILL_VIEW"],
-  5: ["ALL_PERMISSIONS"],
-};
-const PERM_LABELS = {
-  "PAT_VIEW_ID":       "Voir identité patient",
-  "PAT_VIEW_CLINICAL": "Voir dossier clinique",
-  "PAT_EDIT_CLINICAL": "Modifier dossier clinique",
-  "PAT_VIEW_LABS":     "Voir résultats biologiques",
-  "PAT_VIEW_IMAGING":  "Voir imagerie (PACS)",
-  "PAT_PRESCRIBE":     "Créer / modifier prescriptions",
-  "PAT_VIEW_MEDS":     "Voir prescriptions en cours",
-  "PAT_ADMIT":         "Gérer admissions / sorties",
-  "STAFF_VIEW":        "Voir profils du personnel",
-  "BILL_VIEW":         "Voir facturation",
-  "ALL_PERMISSIONS":   "Toutes les permissions (admin)",
-};
-
-const DB_MEDICAMENTS = [
-  { id:1,  brand:"Doliprane",         inn:"Paracétamol",             form:"Comprimé",     dosage:"500mg / 1g",     route:"Per os",   category:"Analgésique - Antipyrétique" },
-  { id:2,  brand:"Perfalgan",         inn:"Paracétamol",             form:"Injectable",   dosage:"10mg/mL",        route:"IV",       category:"Analgésique - Antipyrétique" },
-  { id:3,  brand:"Advil",             inn:"Ibuprofène",              form:"Comprimé",     dosage:"200mg / 400mg",  route:"Per os",   category:"AINS - Analgésique" },
-  { id:4,  brand:"Profenid",          inn:"Kétoprofène",             form:"Injectable",   dosage:"50mg / 100mg",   route:"IV/IM",    category:"AINS" },
-  { id:5,  brand:"Actiskenan",        inn:"Morphine",                form:"Gélule LP",    dosage:"5mg / 10mg",     route:"Per os",   category:"Opioïde fort" },
-  { id:6,  brand:"Morphine Aguettant",inn:"Morphine",                form:"Injectable",   dosage:"10mg/mL",        route:"IV/SC",    category:"Opioïde fort" },
-  { id:7,  brand:"Topalgic",          inn:"Tramadol",                form:"Comprimé LP",  dosage:"50mg / 100mg",   route:"Per os",   category:"Opioïde faible" },
-  { id:8,  brand:"Amoxicilline",      inn:"Amoxicilline",            form:"Comprimé",     dosage:"500mg / 1g",     route:"Per os",   category:"Antibiotique - Pénicilline" },
-  { id:9,  brand:"Augmentin",         inn:"Amoxicilline/Clavulanate",form:"Comprimé",     dosage:"875mg/125mg",    route:"Per os",   category:"Antibiotique - Pénicilline" },
-  { id:10, brand:"Augmentin IV",      inn:"Amoxicilline/Clavulanate",form:"Injectable",   dosage:"1g/200mg",       route:"IV",       category:"Antibiotique - Pénicilline" },
-  { id:11, brand:"Clamoxyl",          inn:"Amoxicilline",            form:"Injectable",   dosage:"1g / 2g",        route:"IV/IM",    category:"Antibiotique - Pénicilline" },
-  { id:12, brand:"Zithromax",         inn:"Azithromycine",           form:"Comprimé",     dosage:"250mg / 500mg",  route:"Per os",   category:"Antibiotique - Macrolide" },
-  { id:13, brand:"Flagyl",            inn:"Métronidazole",           form:"Comprimé",     dosage:"250mg / 500mg",  route:"Per os",   category:"Antibiotique - Imidazolé" },
-  { id:14, brand:"Flagyl IV",         inn:"Métronidazole",           form:"Injectable",   dosage:"5mg/mL",         route:"IV",       category:"Antibiotique - Imidazolé" },
-  { id:15, brand:"Ciflox",            inn:"Ciprofloxacine",          form:"Comprimé",     dosage:"250mg / 500mg",  route:"Per os",   category:"Antibiotique - Fluoroquinolone" },
-  { id:16, brand:"Rocéphine",         inn:"Ceftriaxone",             form:"Injectable",   dosage:"1g / 2g",        route:"IV/IM",    category:"Antibiotique - Céphalosporine" },
-  { id:17, brand:"Vancomycine",       inn:"Vancomycine",             form:"Injectable",   dosage:"500mg / 1g",     route:"IV",       category:"Antibiotique - Glycopeptide" },
-  { id:18, brand:"Kardégic",          inn:"Acide Acétylsalicylique", form:"Sachet",       dosage:"75mg / 160mg",   route:"Per os",   category:"Antiagrégant plaquettaire" },
-  { id:19, brand:"Plavix",            inn:"Clopidogrel",             form:"Comprimé",     dosage:"75mg",           route:"Per os",   category:"Antiagrégant plaquettaire" },
-  { id:20, brand:"Xarelto",           inn:"Rivaroxaban",             form:"Comprimé",     dosage:"10mg / 20mg",    route:"Per os",   category:"Anticoagulant - AOD" },
-  { id:21, brand:"Eliquis",           inn:"Apixaban",                form:"Comprimé",     dosage:"2.5mg / 5mg",    route:"Per os",   category:"Anticoagulant - AOD" },
-  { id:22, brand:"Lovenox",           inn:"Énoxaparine",             form:"Injectable",   dosage:"4000UI / 6000UI",route:"SC",       category:"Héparinothérapie - HBPM" },
-  { id:23, brand:"Héparine sodique",  inn:"Héparine",                form:"Injectable",   dosage:"5000UI/mL",      route:"IV/SC",    category:"Héparinothérapie - HNF" },
-  { id:24, brand:"Coumadine",         inn:"Warfarine",               form:"Comprimé",     dosage:"2mg / 5mg",      route:"Per os",   category:"Anticoagulant - AVK" },
-  { id:25, brand:"Lisinopril",        inn:"Lisinopril",              form:"Comprimé",     dosage:"5mg / 10mg",     route:"Per os",   category:"IEC - Antihypertenseur" },
-  { id:26, brand:"Triatec",           inn:"Ramipril",                form:"Comprimé",     dosage:"2.5mg / 5mg",    route:"Per os",   category:"IEC - Antihypertenseur" },
-  { id:27, brand:"Amlor",             inn:"Amlodipine",              form:"Comprimé",     dosage:"5mg / 10mg",     route:"Per os",   category:"Inhibiteur calcique" },
-  { id:28, brand:"Bisoprolol",        inn:"Bisoprolol",              form:"Comprimé",     dosage:"2.5mg / 5mg",    route:"Per os",   category:"Bêtabloquant" },
-  { id:29, brand:"Lasilix",           inn:"Furosémide",              form:"Comprimé",     dosage:"40mg",           route:"Per os",   category:"Diurétique" },
-  { id:30, brand:"Tahor",             inn:"Atorvastatine",           form:"Comprimé",     dosage:"10mg / 40mg",    route:"Per os",   category:"Hypolipémiant - Statine" },
-  { id:31, brand:"Glucophage",        inn:"Metformine",              form:"Comprimé",     dosage:"500mg / 850mg",  route:"Per os",   category:"Antidiabétique - Biguanide" },
-  { id:32, brand:"Lantus",            inn:"Insuline Glargine",       form:"Injectable",   dosage:"100UI/mL",       route:"SC",       category:"Insuline basale" },
-  { id:33, brand:"Novorapid",         inn:"Insuline Asparte",        form:"Injectable",   dosage:"100UI/mL",       route:"SC",       category:"Insuline rapide" },
-  { id:34, brand:"Ventoline",         inn:"Salbutamol",              form:"Aérosol",      dosage:"100µg/dose",     route:"Inhalé",   category:"Bronchodilatateur B2" },
-  { id:35, brand:"Solupred",          inn:"Prednisolone",            form:"Comprimé",     dosage:"5mg / 20mg",     route:"Per os",   category:"Corticostéroïde" },
-  { id:36, brand:"Solu-Médrol",       inn:"Méthylprednisolone",      form:"Injectable",   dosage:"40mg / 120mg",   route:"IV/IM",    category:"Corticostéroïde" },
-  { id:37, brand:"Mopral",            inn:"Oméprazole",              form:"Gélule",       dosage:"20mg / 40mg",    route:"Per os",   category:"IPP - Antiulcéreux" },
-  { id:38, brand:"Inexium",           inn:"Ésoméprazole",            form:"Comprimé",     dosage:"20mg / 40mg",    route:"Per os",   category:"IPP - Antiulcéreux" },
-  { id:39, brand:"Zophren",           inn:"Ondansétron",             form:"Comprimé",     dosage:"4mg / 8mg",      route:"Per os/IV",category:"Antiémétique" },
-  { id:40, brand:"Rivotril",          inn:"Clonazépam",              form:"Comprimé",     dosage:"2mg",            route:"Per os",   category:"Antiépileptique" },
-  { id:41, brand:"Dépakine",          inn:"Valproate",               form:"Comprimé LP",  dosage:"200mg / 500mg",  route:"Per os",   category:"Antiépileptique" },
-  { id:42, brand:"Keppra",            inn:"Lévétiracétam",           form:"Comprimé",     dosage:"250mg / 500mg",  route:"Per os",   category:"Antiépileptique" },
-  { id:43, brand:"Propofol",          inn:"Propofol",                form:"Injectable",   dosage:"10mg/mL",        route:"IV",       category:"Anesthésique général" },
-  { id:44, brand:"NaCl 0.9%",         inn:"Chlorure de sodium",      form:"Injectable",   dosage:"500mL / 1L",     route:"IV",       category:"Soluté de remplissage" },
-  { id:45, brand:"Ringer Lactate",    inn:"Ringer Lactate",          form:"Injectable",   dosage:"500mL / 1L",     route:"IV",       category:"Soluté de remplissage" },
-];
-
-// Allergies connues par patient (pour détection de conflits)
-const KNOWN_ALLERGIES = {
-  2: ["pénicilline", "amoxicilline", "augmentin", "clamoxyl"],
-  3: ["ibuprofène", "advil", "kétoprofène", "profenid"],
-};
-
-// Correction automatique des fautes de frappe courantes
-const TYPO_CORRECTIONS = {
-  "dolipran":    "Doliprane", "dolipranr":    "Doliprane", "dolipranne": "Doliprane",
-  "amoxiciline": "Amoxicilline",
-  "paracetamol": "Paracétamol",
-  "ibuprofene":  "Ibuprofène",
-  "morphyne":    "Morphine",   "morfine":      "Morphine",
-  "dupond":      "Dupont",     "dupon":        "Dupont",
-  "lefevre":     "Lefevre",    "lefèvre":      "Lefevre",
-  "hakimy":      "Hakimi",
-};
+const BORDER  = "#E2E8F0";
 
 function autoCorrect(text) {
   let corrected = text;
@@ -152,48 +42,6 @@ function detectAllergyConflict(nlpData, patientMatch) {
   if (conflict) return `ALERTE ALLERGIE : ${patientMatch.first_name} ${patientMatch.last_name} est allergique à ${conflict}`;
   return null;
 }
-
-// NLP autocomplete: patient names, drug names, common phrases, medical terms
-const AUTOCOMPLETE_CORPUS = [
-  // Patient names
-  ...DB_PATIENTS.map(p => `patient ${p.last_name}`),
-  ...DB_PATIENTS.map(p => `M. ${p.last_name}`),
-  ...DB_PATIENTS.map(p => `Mme ${p.last_name}`),
-  // Drug names
-  ...DB_MEDICAMENTS.map(m => `${m.brand}`),
-  ...DB_MEDICAMENTS.map(m => `${m.inn}`),
-  // Common phrase templates
-  "Patient [nom] a besoin de [dose] de [médicament] par voie orale",
-  "Prescrire [médicament] [dose] par voie [IV/Per os/SC] [fréquence]",
-  "Allergie à [substance] chez le patient [nom]",
-  "Transfert du patient [nom] vers le service de [cardiologie/neurologie/urgences]",
-  "Radiographie thoracique pour le patient chambre [N°]",
-  "Bilan sanguin complet pour [patient]",
-  "Injection de [médicament] [dose] en IV toutes les [N]h",
-  "Renouveler ordonnance de [médicament] pour [patient]",
-  "Stopper [médicament] chez [patient] — allergie suspectée",
-  "Augmenter dose [médicament] à [dose] — indication [diagnostic]",
-  "Prise de sang NFS CRP pour le patient [nom]",
-  "Scanner thoracique abdominal en urgence pour [patient]",
-  "ECG 12 dérivations en urgence chambre [N°]",
-  "Glycémie capillaire [valeur] chez [patient] — adapter insuline",
-  "TA [valeur] FC [valeur] chez [patient] — noter dans dossier",
-  "Pose de perfusion NaCl 0.9% 500mL sur [N]h pour [patient]",
-  "Transfert en réanimation priorité haute — patient [nom]",
-  "Sortie prévue demain pour [patient] — ordonnance de sortie",
-  "Signaler allergie pénicilline pour [patient]",
-  "Douleur EVA [score] chez [patient] — antalgique palier [N]",
-  // Routes
-  "par voie orale", "par voie intraveineuse", "par voie intramusculaire",
-  "par voie sous-cutanée", "par voie inhalée",
-  // Frequencies
-  "toutes les 6 heures", "toutes les 8 heures", "toutes les 12 heures",
-  "1 fois par jour", "2 fois par jour", "3 fois par jour",
-  "le matin à jeun", "au coucher", "en urgence STAT",
-  // Services
-  "service cardiologie", "service neurologie", "service urgences",
-  "service réanimation", "service chirurgie", "service maternité",
-];
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  NLP → PRESCRIPTION MAPPER
@@ -586,7 +434,209 @@ function AutocompleteInput({ value, onChange, onSubmit, loading, placeholder }) 
           ))}
         </div>
       )}
-      <style>{`@keyframes voicePulse{0%,100%{opacity:1}50%{opacity:0.55}}`}</style>
+      <style>{`@keyframes voicePulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{opacity:.7;box-shadow:0 0 0 6px rgba(239,68,68,0)}}`}</style>
+    </div>
+  );
+}
+
+// (Logo removed per user request)
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  ICONS (professional 2D SVG — no emojis)
+// ─────────────────────────────────────────────────────────────────────────────
+const Icon = ({ type, size = 15, color = "currentColor" }) => {
+  const props = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" };
+  switch (type) {
+    case "chat": return <svg {...props}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1" fill={color} stroke="none"/><circle cx="12" cy="10" r="1" fill={color} stroke="none"/><circle cx="15" cy="10" r="1" fill={color} stroke="none"/></svg>;
+    case "shield": return <svg {...props}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>;
+    case "file": return <svg {...props}><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>;
+    case "folder": return <svg {...props}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>;
+    case "eye": return <svg {...props}><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>;
+    case "clipboard": return <svg {...props}><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>;
+    case "activity": return <svg {...props}><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>;
+    case "flask": return <svg {...props}><path d="M9 3h6v7l5 8a2 2 0 0 1-1.7 3H5.7a2 2 0 0 1-1.7-3l5-8V3z"/><line x1="9" y1="3" x2="15" y2="3"/></svg>;
+    case "image": return <svg {...props}><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>;
+    case "settings": return <svg {...props}><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.32 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>;
+    case "clock": return <svg {...props}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>;
+    case "user": return <svg {...props}><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>;
+    case "pill": return <svg {...props}><path d="M10.5 1.5L3 9a4.24 4.24 0 0 0 6 6l7.5-7.5a4.24 4.24 0 0 0-6-6z"/><line x1="8.5" y1="8.5" x2="15.5" y2="1.5"/></svg>;
+    default: return null;
+  }
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  LIVE CLOCK
+// ─────────────────────────────────────────────────────────────────────────────
+function LiveClock() {
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(id);
+  }, []);
+  const days = ["Dim","Lun","Mar","Mer","Jeu","Ven","Sam"];
+  const months = ["Janv","Fev","Mars","Avr","Mai","Juin","Juil","Aout","Sept","Oct","Nov","Dec"];
+  return (
+    <div style={{ display:"flex", alignItems:"center", gap:12, color:"#fff" }}>
+      <div style={{ textAlign:"right", lineHeight:1.3 }}>
+        <div style={{ fontSize:11, opacity:0.6, fontWeight:500 }}>{days[now.getDay()]} {now.getDate()} {months[now.getMonth()]}</div>
+      </div>
+      <div style={{ fontSize:22, fontWeight:700, fontFamily:"'Space Mono', monospace", letterSpacing:1 }}>
+        {now.toLocaleTimeString("fr-FR", { hour:"2-digit", minute:"2-digit" })}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  DOSSIER PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+const BLOOD_COLORS = { "A+":"#E53E3E","A-":"#FC8181","B+":"#DD6B20","B-":"#F6AD55","AB+":"#805AD5","AB-":"#B794F4","O+":"#2B6CB0","O-":"#63B3ED" };
+
+function DossierPanel({ prescriptions }) {
+  const [expanded, setExpanded] = useState(() =>
+    Object.fromEntries(DB_PATIENTS.map(p => [p.patient_id, prescriptions.filter(r => r.patient_id === p.patient_id).length > 0]))
+  );
+  const toggle = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      {DB_PATIENTS.map(p => {
+        const rxList = prescriptions.filter(r => r.patient_id === p.patient_id);
+        const allergies = KNOWN_ALLERGIES[p.patient_id] || [];
+        const age = new Date().getFullYear() - new Date(p.date_of_birth).getFullYear();
+        const urgentRx = rxList.filter(r => r.priorite === "URGENTE" || r.priorite === "STAT");
+        const isOpen = !!expanded[p.patient_id];
+
+        return (
+          <div key={p.patient_id} style={{
+            background:CARD, borderRadius:14, border:`1px solid ${isOpen ? ACCENT+"30" : BORDER}`,
+            boxShadow: isOpen ? "0 4px 16px rgba(15,76,117,.08)" : "0 1px 4px rgba(0,0,0,.04)",
+            overflow:"hidden", transition:"box-shadow .2s, border-color .2s",
+          }}>
+            {/* ── Patient header ── */}
+            <button onClick={() => toggle(p.patient_id)} style={{
+              width:"100%", display:"flex", alignItems:"center", gap:14, padding:"16px 20px",
+              background:"none", border:"none", cursor:"pointer", fontFamily:"'DM Sans', sans-serif",
+              borderBottom: isOpen ? `1px solid ${BORDER}` : "none",
+            }}>
+              <div style={{
+                width:44, height:44, borderRadius:12, flexShrink:0,
+                background:(BLOOD_COLORS[p.blood_type] || ACCENT)+"18",
+                display:"grid", placeItems:"center",
+              }}>
+                <span style={{ fontWeight:800, fontSize:12, color:BLOOD_COLORS[p.blood_type] || ACCENT, fontFamily:"'Space Mono', monospace" }}>
+                  {p.blood_type}
+                </span>
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                  <span style={{ fontWeight:700, fontSize:15, color:"#1A1A2E" }}>
+                    {p.gender === "F" ? "Mme" : "M."} {p.first_name} {p.last_name}
+                  </span>
+                  <span style={{ fontSize:11, color:MUTED, fontFamily:"'Space Mono', monospace" }}>{p.ipp}</span>
+                  {allergies.length > 0 && (
+                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:5, background:RED+"18", color:RED }}>ALLERGIE</span>
+                  )}
+                  {urgentRx.length > 0 && (
+                    <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:5, background:AMBER+"18", color:AMBER }}>{urgentRx.length} URGENT</span>
+                  )}
+                </div>
+                <div style={{ fontSize:12, color:MUTED, marginTop:2 }}>
+                  {p.ward} · Chambre {p.room} · {age} ans · {p.gender === "F" ? "Femme" : "Homme"}
+                </div>
+              </div>
+
+              {/* Arrow */}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2.5"
+                strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink:0, transition:"transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }}>
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </button>
+
+            {/* ── Body: info + actes side by side ── */}
+            {isOpen && <div style={{ display:"flex", gap:0, flexWrap:"wrap" }}>
+              {/* Left: patient details */}
+              <div style={{ flex:"0 0 260px", padding:"16px 20px", borderRight:`1px solid ${BORDER}` }}>
+                <div style={{ fontWeight:700, fontSize:11, color:MUTED, textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>Informations</div>
+                <table style={{ fontSize:13, lineHeight:1.9, width:"100%" }}>
+                  <tbody>
+                    {[
+                      ["Naissance", new Date(p.date_of_birth).toLocaleDateString("fr-FR")],
+                      ["Âge",       age + " ans"],
+                      ["Sexe",      p.gender === "F" ? "Féminin" : "Masculin"],
+                      ["Groupe",    p.blood_type],
+                      ["Service",   p.ward],
+                      ["Chambre",   p.room],
+                    ].map(([k, v]) => (
+                      <tr key={k}>
+                        <td style={{ color:MUTED, fontWeight:600, paddingRight:10, whiteSpace:"nowrap", fontSize:12 }}>{k}</td>
+                        <td style={{ fontWeight:500 }}>{v}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {allergies.length > 0 && (
+                  <div style={{ marginTop:12 }}>
+                    <div style={{ fontWeight:700, fontSize:11, color:RED, textTransform:"uppercase", letterSpacing:.5, marginBottom:6 }}>Allergies</div>
+                    <div style={{ display:"flex", flexWrap:"wrap", gap:4 }}>
+                      {allergies.map(a => (
+                        <span key={a} style={{ fontSize:11, fontWeight:600, padding:"3px 8px", borderRadius:5, background:RED+"12", color:RED, textTransform:"capitalize" }}>{a}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Right: actes & ordres */}
+              <div style={{ flex:"1 1 300px", padding:"16px 20px" }}>
+                <div style={{ fontWeight:700, fontSize:11, color:MUTED, textTransform:"uppercase", letterSpacing:.5, marginBottom:10 }}>
+                  Actes & Ordres {rxList.length > 0 && <span style={{ color:ACCENT }}>({rxList.length})</span>}
+                </div>
+                {rxList.length > 0 ? (
+                <div style={{ display:"flex", flexDirection:"column", gap:8 }}>
+                    {rxList.map(rx => {
+                      const prioColor = rx.priorite === "URGENTE" || rx.priorite === "STAT" ? RED : rx.priorite === "NORMALE" ? AMBER : MUTED;
+                      return (
+                        <div key={rx.prescription_id} style={{
+                          display:"flex", alignItems:"flex-start", gap:10, padding:"10px 14px",
+                          borderRadius:10, border:`1px solid ${BORDER}`, background:"#FAFBFC",
+                        }}>
+                          <div style={{ flex:1, minWidth:0 }}>
+                            <div style={{ fontWeight:600, fontSize:13 }}>
+                              {rx.drug_name_free || rx.examen || rx.action || "—"}
+                            </div>
+                            {(rx.dosage || rx.route || rx.frequency) && (
+                              <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>
+                                {[rx.dosage, rx.route, rx.frequency].filter(Boolean).join(" · ")}
+                              </div>
+                            )}
+                            {rx.indication && (
+                              <div style={{ fontSize:11, color:MUTED }}>Indication : {rx.indication}</div>
+                            )}
+                            {rx.allergyAlert && (
+                              <div style={{ fontSize:11, fontWeight:700, color:RED, marginTop:3 }}>⚠ {rx.allergyAlert}</div>
+                            )}
+                          </div>
+                          <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
+                            {rx.priorite && (
+                              <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:5, background:prioColor+"18", color:prioColor }}>{rx.priorite}</span>
+                            )}
+                            <span style={{ fontSize:10, color:MUTED }}>
+                              {rx.is_validated ? "✓ Validé" : rx.is_cancelled ? "Annulé" : "En attente"}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div style={{ fontSize:13, color:MUTED, fontStyle:"italic", paddingTop:4 }}>Aucun acte ou ordre enregistré.</div>
+                )}
+              </div>
+            </div>}
+          </div>
+        );
+      })}
     </div>
   );
 }
@@ -595,16 +645,28 @@ function AutocompleteInput({ value, onChange, onSubmit, loading, placeholder }) 
 //  TABS
 // ─────────────────────────────────────────────────────────────────────────────
 const tabs = [
-  { id:"nlp", label:"NLP Contextuel" },
-  { id:"bio", label:"Sécurité Biométrique" },
-  { id:"rx",  label:"Actes & Ordres" },
+  { id:"nlp", label:"NLP Contextuel", iconType:"chat" },
+  { id:"rx",  label:"Actes & Ordres", iconType:"file" },
+];
+
+const subTabs = [
+  { id:"dossier",      label:"Dossier",       iconType:"folder" },
+  { id:"observations", label:"Observations",   iconType:"eye" },
+  { id:"prescriptions",label:"Prescriptions",  iconType:"pill" },
+  { id:"labo",         label:"Labo",           iconType:"flask" },
+  { id:"imagerie",     label:"Imagerie",       iconType:"image" },
+  { id:"constantes",   label:"Constantes",     iconType:"activity" },
+  { id:"personnel",    label:"Personnel",      iconType:"user" },
+  { id:"parametres",   label:"Parametres",     iconType:"settings" },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  ROOT COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SmartUXBots() {
+  const [authenticatedUser, setAuthenticatedUser] = useState(null);
   const [activeTab, setActiveTab]       = useState("nlp");
+  const [activeSubTab, setActiveSubTab] = useState(null);
   // Shared prescriptions store (written by NLPBot, read by RxTab)
   const [prescriptions, setPrescriptions] = useState([]);
 
@@ -618,7 +680,6 @@ export default function SmartUXBots() {
     setPrescriptions(prev => [rx, ...prev]);
   }, []);
 
-
   const updatePrescription = useCallback(async (id, changes) => {
     await fetch(`http://localhost:3001/api/prescriptions/${id}`, {
       method: "PATCH",
@@ -628,81 +689,200 @@ export default function SmartUXBots() {
     setPrescriptions(prev => prev.map(rx => rx.prescription_id === id ? {...rx,...changes} : rx));
   }, []);
 
-  return (
-    <div style={{ minHeight:"100vh", background:BG, fontFamily:"'DM Sans', sans-serif", color:"#1A1A2E" }}>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+  // Badge counts for Rx tab
+  const rxActive = prescriptions.filter(r => !r.is_validated && !r.is_cancelled);
+  const rxUrgent = rxActive.filter(r => r.priorite === "URGENTE" || r.priorite === "STAT").length;
+  const rxPending = rxActive.filter(r => r.priorite !== "URGENTE" && r.priorite !== "STAT").length;
+  const now30 = new Date(Date.now() + 30*60*1000);
+  const rxExpiring = rxActive.filter(r => r.echeance && new Date(r.echeance) > new Date() && new Date(r.echeance) <= now30).length;
 
-      {/* Header */}
-      <header style={{ background:ACCENT, padding:"28px 32px 22px", display:"flex", alignItems:"center", justifyContent:"space-between", flexWrap:"wrap", gap:16 }}>
-        <div style={{ display:"flex", alignItems:"center", gap:14 }}>
-          <div style={{ width:42, height:42, borderRadius:10, background:ACCENT2, display:"grid", placeItems:"center", fontWeight:700, color:"#fff", fontSize:18, fontFamily:"'Space Mono', monospace" }}>S</div>
-          <div>
-            <div style={{ color:"#fff", fontWeight:700, fontSize:20, letterSpacing:-0.3 }}>SmartUX-AI</div>
-            <div style={{ color:"rgba(255,255,255,.6)", fontSize:12, marginTop:2 }}>Prototype — Projet CRIStAL × Centrale Lille</div>
+  if (!authenticatedUser) {
+    return (
+      <div style={{ minHeight:"100vh", background:BG, fontFamily:"'DM Sans', sans-serif", color:"#1A1A2E", display:"flex", flexDirection:"column" }}>
+        <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+        <style>{`*{box-sizing:border-box}body{margin:0}@keyframes spin{to{transform:rotate(360deg)}}@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}`}</style>
+        {/* Auth gate header */}
+        <div style={{ background:"#1B3A54", padding:"14px 24px", display:"flex", alignItems:"center", gap:8, borderBottom:"2px solid #0F2B40" }}>
+          <span style={{ color:"#fff", fontWeight:800, fontSize:17 }}>Smart</span>
+          <span style={{ color:ACCENT2, fontWeight:800, fontSize:17 }}>UX</span>
+          <span style={{ color:"rgba(255,255,255,.35)", fontWeight:500, fontSize:12, marginLeft:2 }}>AI</span>
+          <span style={{ marginLeft:16, fontSize:12, color:"rgba(255,255,255,.5)", fontWeight:500 }}>— Authentification requise</span>
+        </div>
+        <div style={{ flex:1, display:"flex", alignItems:"flex-start", justifyContent:"center", padding:"32px 16px" }}>
+          <div style={{ width:"100%", maxWidth:900, animation:"fadeIn .3s ease both" }}>
+            <BioBot onAuth={setAuthenticatedUser} />
           </div>
         </div>
-        <div style={{ display:"flex", gap:6 }}>
-          {tabs.map(t => (
-            <button key={t.id} onClick={() => setActiveTab(t.id)} style={{
-              padding:"8px 18px", borderRadius:8, border:"none",
-              fontFamily:"'DM Sans', sans-serif", fontWeight:600, fontSize:13, cursor:"pointer",
-              background: activeTab === t.id ? "#fff" : "rgba(255,255,255,.12)",
-              color: activeTab === t.id ? ACCENT : "rgba(255,255,255,.8)",
-              transition:"all .2s",
-              position:"relative",
-            }}>
-              {t.label}
-              {t.id === "rx" && (() => {
-                const now30   = new Date(Date.now() + 30*60*1000);
-                const urgent  = prescriptions.filter(r => !r.is_validated && !r.is_cancelled && (r.priorite === "URGENTE" || r.priorite === "STAT")).length;
-                // Orange badge = only non-urgent pending tasks (urgent ones are already shown in red badge)
-                const pending = prescriptions.filter(r => !r.is_validated && !r.is_cancelled && r.priorite !== "URGENTE" && r.priorite !== "STAT").length;
-                const expiring30 = prescriptions.filter(r => !r.is_validated && !r.is_cancelled && r.echeance && new Date(r.echeance) > new Date() && new Date(r.echeance) <= now30).length;
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ minHeight:"100vh", background:BG, fontFamily:"'DM Sans', sans-serif", color:"#1A1A2E" }}>
+      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;0,9..40,800&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+
+      <style>{`
+        *{box-sizing:border-box}
+        body{margin:0}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes tabIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+        @keyframes voicePulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{opacity:.7;box-shadow:0 0 0 6px rgba(239,68,68,0)}}
+        .tab-content{animation:tabIn .22s ease both}
+        .rx-card{transition:box-shadow .2s,transform .15s}
+        .rx-card:hover{box-shadow:0 6px 28px rgba(15,76,117,.10);transform:translateY(-1px)}
+        .sillage-tab:hover{background:rgba(255,255,255,.12) !important}
+        .sillage-subtab:hover{background:#E8EDF2 !important}
+      `}</style>
+
+      {/* ── TOP BAR (Sillage-style dark blue) ──────────────────────────────── */}
+      <header style={{
+        background:"#1B3A54",
+        position:"sticky", top:0, zIndex:200,
+        borderBottom:"2px solid #0F2B40",
+      }}>
+        {/* Row 1: Brand left + Icons left-center + Clock right */}
+        <div style={{ display:"flex", alignItems:"center", padding:"0 16px", minHeight:52, gap:0 }}>
+
+          {/* Left: Title + icons */}
+          <div style={{ display:"flex", alignItems:"center", gap:14, flex:1 }}>
+            {/* App name */}
+            <div style={{ display:"flex", alignItems:"baseline", gap:5, marginRight:16 }}>
+              <span style={{ color:"#fff", fontWeight:800, fontSize:17, letterSpacing:-0.3 }}>Smart</span>
+              <span style={{ color:ACCENT2, fontWeight:800, fontSize:17, letterSpacing:-0.3 }}>UX</span>
+              <span style={{ color:"rgba(255,255,255,.35)", fontWeight:500, fontSize:12, marginLeft:2 }}>AI</span>
+            </div>
+
+            {/* 3 main module icons — left-aligned */}
+            <div style={{ display:"flex", gap:2 }}>
+              {tabs.map(t => {
+                const active = activeTab === t.id;
+                const badgeCount = t.id === "rx" ? (rxUrgent + rxPending) : 0;
                 return (
-                  <>
-                    {expiring30 > 0 && (
-                      <span title={`${expiring30} acte(s) expirant dans moins de 30 min`} style={{
-                        position:"absolute", top:-7, right: urgent > 0 ? (pending > 0 ? 28 : 14) : pending > 0 ? 14 : -7,
-                        minWidth:18, height:18, borderRadius:9, padding:"0 4px",
-                        background:"#F97316", color:"#fff", fontSize:10, fontWeight:700,
-                        display:"grid", placeItems:"center", boxSizing:"border-box",
-                        border:"2px solid #F97316",
-                      }}>{expiring30}</span>
+                  <button key={t.id} className="sillage-tab" onClick={() => { setActiveTab(t.id); setActiveSubTab(null); }} style={{
+                    display:"flex", alignItems:"center", gap:6,
+                    padding:"7px 14px", borderRadius:4, border:"none",
+                    fontFamily:"'DM Sans', sans-serif", fontWeight: active ? 700 : 500, fontSize:12,
+                    cursor:"pointer", position:"relative",
+                    background: active ? "rgba(255,255,255,.18)" : "transparent",
+                    color: active ? "#fff" : "rgba(255,255,255,.6)",
+                    transition:"all .15s",
+                  }}>
+                    <Icon type={t.iconType} size={14} color={active ? "#fff" : "rgba(255,255,255,.55)"} />
+                    {t.label}
+                    {badgeCount > 0 && (
+                      <span style={{
+                        position:"absolute", top:-3, right:-3,
+                        minWidth:16, height:16, borderRadius:8, padding:"0 4px",
+                        background: rxUrgent > 0 ? RED : AMBER, color:"#fff", fontSize:9, fontWeight:700,
+                        display:"grid", placeItems:"center",
+                        boxShadow:"0 1px 3px rgba(0,0,0,.3)",
+                      }}>{badgeCount}</span>
                     )}
-                    {pending > 0 && (
-                      <span title={`${pending} acte(s) non-urgent(s) à faire`} style={{
-                        position:"absolute", top:-7, right: urgent > 0 ? 14 : -7,
-                        minWidth:18, height:18, borderRadius:9, padding:"0 4px",
-                        background:AMBER, color:"#fff", fontSize:10, fontWeight:700,
-                        display:"grid", placeItems:"center", boxSizing:"border-box",
-                        border:"2px solid #F59E0B",
-                      }}>
-                        {pending}
-                      </span>
+                    {rxExpiring > 0 && t.id === "rx" && (
+                      <span style={{
+                        position:"absolute", top:-3, right: badgeCount > 0 ? 12 : -3,
+                        minWidth:16, height:16, borderRadius:8, padding:"0 4px",
+                        background:"#F97316", color:"#fff", fontSize:9, fontWeight:700,
+                        display:"grid", placeItems:"center",
+                        boxShadow:"0 1px 3px rgba(0,0,0,.3)",
+                      }}>{rxExpiring}</span>
                     )}
-                    {urgent > 0 && (
-                      <span title={`${urgent} tâche(s) urgente(s)`} style={{
-                        position:"absolute", top:-7, right:-7,
-                        minWidth:18, height:18, borderRadius:9, padding:"0 4px",
-                        background:RED, color:"#fff", fontSize:10, fontWeight:700,
-                        display:"grid", placeItems:"center", boxSizing:"border-box",
-                        border:"2px solid #EF4444",
-                      }}>
-                        {urgent}
-                      </span>
-                    )}
-                  </>
+                  </button>
                 );
-              })()}
-            </button>
-          ))}
+              })}
+            </div>
+          </div>
+
+          {/* Right: Clock + status */}
+          <div style={{ display:"flex", alignItems:"center", gap:16, flexShrink:0 }}>
+            <div style={{ display:"flex", alignItems:"center", gap:6 }}>
+              <div style={{ width:7, height:7, borderRadius:"50%", background:GREEN, boxShadow:`0 0 6px ${GREEN}` }} />
+              <span style={{ fontSize:11, color:"rgba(255,255,255,.5)", fontWeight:500 }}>En ligne</span>
+            </div>
+            <div style={{ width:1, height:24, background:"rgba(255,255,255,.12)" }} />
+            <LiveClock />
+            <div style={{ width:1, height:24, background:"rgba(255,255,255,.12)", marginLeft:8 }} />
+            {/* Logged-in user chip */}
+            <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:4 }}>
+              <div style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 10px", borderRadius:20, background:"rgba(255,255,255,.12)" }}>
+                <div style={{ width:22, height:22, borderRadius:"50%", background:GREEN, display:"grid", placeItems:"center" }}>
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+                </div>
+                <span style={{ fontSize:12, fontWeight:600, color:"#fff" }}>
+                  {authenticatedUser.title ? `${authenticatedUser.title} ` : ""}{authenticatedUser.first_name} {authenticatedUser.last_name}
+                </span>
+                <span style={{ fontSize:10, color:"rgba(255,255,255,.5)", fontWeight:500 }}>Niv.{authenticatedUser.access_level}</span>
+              </div>
+              <button onClick={() => setAuthenticatedUser(null)} style={{ background:"none", border:"none", cursor:"pointer", padding:"4px 8px", borderRadius:6, color:"rgba(255,255,255,.5)", fontSize:11, fontWeight:600, fontFamily:"'DM Sans', sans-serif" }}
+                title="Se déconnecter">
+                ✕
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Row 2: Sub-tabs (Sillage-style tab bar) */}
+        <div style={{
+          background:"#D6DDE4",
+          borderTop:"1px solid #B8C4CF",
+          display:"flex", alignItems:"center", padding:"0 16px",
+          gap:1, overflowX:"auto",
+        }}>
+          {subTabs.map(st => {
+            const active = activeSubTab === st.id;
+            return (
+              <button key={st.id} className="sillage-subtab" onClick={() => setActiveSubTab(active ? null : st.id)} style={{
+                display:"flex", alignItems:"center", gap:5,
+                padding:"7px 13px", border:"none", borderBottom: active ? "2px solid #1B3A54" : "2px solid transparent",
+                fontFamily:"'DM Sans', sans-serif", fontWeight: active ? 700 : 500, fontSize:12,
+                cursor:"pointer",
+                background: active ? "#F0F4F8" : "transparent",
+                color: active ? "#1B3A54" : "#556677",
+                transition:"all .12s",
+                borderRadius:"4px 4px 0 0",
+                whiteSpace:"nowrap",
+              }}>
+                <Icon type={st.iconType} size={13} color={active ? "#1B3A54" : "#7A8A99"} />
+                {st.label}
+              </button>
+            );
+          })}
         </div>
       </header>
 
-      <main style={{ maxWidth:980, margin:"0 auto", padding:"28px 20px 60px" }}>
-        {activeTab === "nlp" && <NLPBot onPrescription={addPrescription} />}
-        {activeTab === "bio" && <BioBot />}
-        {activeTab === "rx"  && <RxTab prescriptions={prescriptions} onUpdate={updatePrescription} />}
+      {/* ── MAIN ───────────────────────────────────────────────────────────── */}
+      <main style={{ maxWidth:1000, margin:"0 auto", padding:"32px 24px 80px" }}>
+        {/* Sub-tab content */}
+        {activeSubTab === "dossier" && (
+          <div style={{ marginBottom:24, animation:"tabIn .22s ease both" }}>
+            <DossierPanel prescriptions={prescriptions} />
+          </div>
+        )}
+        {activeSubTab && activeSubTab !== "dossier" && (
+          <div style={{
+            background:CARD, borderRadius:12, border:`1px solid ${BORDER}`,
+            padding:"24px 28px", marginBottom:24,
+            boxShadow:"0 2px 10px rgba(0,0,0,.04)",
+          }}>
+            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+              <Icon type={subTabs.find(s => s.id === activeSubTab)?.iconType || "folder"} size={18} color={ACCENT} />
+              <span style={{ fontWeight:700, fontSize:16, color:ACCENT }}>
+                {subTabs.find(s => s.id === activeSubTab)?.label}
+              </span>
+            </div>
+            <div style={{ color:MUTED, fontSize:13, lineHeight:1.6 }}>
+              Module en cours de développement — Ce panneau sera connecté au système SILLAGE pour afficher les données de {subTabs.find(s => s.id === activeSubTab)?.label.toLowerCase()}.
+            </div>
+          </div>
+        )}
+
+        {activeSubTab !== "dossier" && (
+          <div className="tab-content" key={activeTab}>
+            {activeTab === "nlp" && <NLPBot onPrescription={addPrescription} />}
+            {activeTab === "rx"  && <RxTab prescriptions={prescriptions} onUpdate={updatePrescription} />}
+          </div>
+        )}
       </main>
     </div>
   );
@@ -779,18 +959,6 @@ function NLPBot({ onPrescription }) {
   };
   return (
     <div>
-      {/* Info banner */}
-      <div style={{ background:CARD, borderRadius:14, padding:"20px 24px", marginBottom:20, border:"1px solid #E5E7EB", display:"flex", gap:14, alignItems:"flex-start" }}>
-        <div style={{ width:42, height:42, borderRadius:10, background:ACCENT+"15", display:"grid", placeItems:"center", flexShrink:0 }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-        </div>
-        <div>
-          <div style={{ fontWeight:700, fontSize:16, marginBottom:4 }}>Bot NLP Contextuel — Saisie en langage naturel</div>
-          <div style={{ color:MUTED, fontSize:13, lineHeight:1.5 }}>
-            Saisissez une phrase médicale. L'IA extrait automatiquement les données (patient, médicament, dose, voie, fréquence…) et propose de les enregistrer dans la table <strong>prescriptions</strong> de SILLAGE.
-          </div>
-        </div>
-      </div>
 
       {/* Examples */}
       <div style={{ marginBottom:16, display:"flex", flexWrap:"wrap", gap:6 }}>
@@ -806,7 +974,7 @@ function NLPBot({ onPrescription }) {
       </div>
 
       {/* Chat area */}
-      <div style={{ background:CARD, borderRadius:14, border:"1px solid #E5E7EB", minHeight:340, maxHeight:520, overflowY:"auto", padding:"18px 20px", display:"flex", flexDirection:"column", gap:14 }}>
+      <div style={{ background:CARD, borderRadius:16, border:`1px solid ${BORDER}`, minHeight:340, maxHeight:520, overflowY:"auto", padding:"20px 22px", display:"flex", flexDirection:"column", gap:14, boxShadow:"0 2px 12px rgba(0,0,0,.04)" }}>
         {history.length === 0 && (
           <div style={{ flex:1, display:"grid", placeItems:"center", color:"#CBD5E1", fontSize:14 }}>
             Commencez à saisir une phrase pour voir l'extraction NLP et l'enregistrement en base…
@@ -1009,12 +1177,11 @@ function RxTab({ prescriptions, onUpdate }) {
     const headBg   = isExpiring || soon ? AMBER + "10"
                    : isUrgent || overdue ? RED + "07" : "transparent";
     return (
-    <div style={{
+    <div className="rx-card" style={{
       background: CARD,
-      borderRadius: 14,
+      borderRadius: 16,
       border: `1px solid ${rx.allergyAlert ? RED+"60" : borderColor}`,
       overflow: "hidden",
-      transition: "border-color .2s",
     }}>
       {/* Allergy alert banner */}
       {rx.allergyAlert && (
@@ -1124,7 +1291,7 @@ function RxTab({ prescriptions, onUpdate }) {
   return (
     <div>
       {/* Page header summary */}
-      <div style={{ background: CARD, borderRadius: 14, padding: "18px 24px", marginBottom: 24, border: "1px solid #E5E7EB", display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+      <div style={{ background: CARD, borderRadius: 16, padding: "18px 24px", marginBottom: 24, border: `1px solid ${BORDER}`, display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap", boxShadow:"0 2px 12px rgba(0,0,0,.04)" }}>
         <div style={{ width: 42, height: 42, borderRadius: 10, background: ACCENT + "15", display: "grid", placeItems: "center", flexShrink: 0 }}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke={ACCENT} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
@@ -1259,7 +1426,7 @@ function drawFaceBox(canvas, video) {
   ctx.fillText("Positionnez votre visage ici", cx, cy+144);
 }
 
-function BioBot() {
+function BioBot({ onAuth }) {
   const videoRef     = useRef(null);
   const canvasRef    = useRef(null);
   const animRef      = useRef(null);
@@ -1341,7 +1508,12 @@ function BioBot() {
     return () => cancelAnimationFrame(animRef.current);
   }, [camActive, camError]);
 
-  const simulateVerify = useCallback(() => { setStep("verifying"); setTimeout(() => setStep("granted"), 2200); }, []);
+  const simulateVerify = useCallback(() => {
+    const user = selectedUser || DB_STAFF.find(u => u.biometric_enrolled) || DB_STAFF[0];
+    setSelectedUser(user);
+    setStep("verifying");
+    setTimeout(() => { setStep("granted"); setTimeout(() => onAuth && onAuth(user), 900); }, 2200);
+  }, [selectedUser, onAuth]);
   const reset = useCallback(() => {
     stopCam();
     setSelectedUser(null);
@@ -1362,7 +1534,7 @@ function BioBot() {
     if (match.password !== pwdPass) { setPwdError("Mot de passe incorrect."); return; }
     setSelectedUser(match);
     setStep("verifying");
-    setTimeout(() => setStep("granted"), 1600);
+    setTimeout(() => { setStep("granted"); setTimeout(() => onAuth && onAuth(match), 900); }, 1600);
   }, [pwdLogin, pwdPass]);
 
   const switchMethod = useCallback((m) => {
@@ -1378,85 +1550,9 @@ function BioBot() {
 
   return (
     <div>
-      {/* Info banner */}
-      <div style={{ background:CARD, borderRadius:14, padding:"20px 24px", marginBottom:20, border:"1px solid #E5E7EB", display:"flex", gap:14, alignItems:"flex-start" }}>
-        <div style={{ width:42, height:42, borderRadius:10, background:ACCENT2+"15", display:"grid", placeItems:"center", flexShrink:0 }}>
-          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={ACCENT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-        </div>
-        <div>
-          <div style={{ fontWeight:700, fontSize:16, marginBottom:4 }}>Bot Sécurité Biométrique — Base personnel SILLAGE</div>
-          <div style={{ color:MUTED, fontSize:13, lineHeight:1.5 }}>
-            Sélectionnez un membre du personnel hospitalier (issu de la base de données) pour simuler la vérification biométrique. Les droits accordés sont ceux définis dans la table <strong>roles</strong> et <strong>role_permissions</strong>.
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display:"flex", gap:20, flexWrap:"wrap" }}>
-        {/* Left: staff selector */}
-        <div style={{ flex:"1 1 300px" }}>
-          <div style={{ background:CARD, borderRadius:14, border:"1px solid #E5E7EB", padding:20, marginBottom:16 }}>
-            <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>1 — Sélection du personnel (base SILLAGE)</div>
-            {/* Search */}
-            <input
-              value={searchStaff}
-              onChange={e => setSearchStaff(e.target.value)}
-              placeholder="Rechercher par nom, rôle, service…"
-              style={{ width:"100%", boxSizing:"border-box", padding:"8px 12px", borderRadius:8, border:"1.5px solid #E5E7EB", fontFamily:"'DM Sans', sans-serif", fontSize:13, outline:"none", marginBottom:10 }}
-            />
-            <div style={{ display:"flex", flexDirection:"column", gap:6, maxHeight:340, overflowY:"auto" }}>
-              {filteredStaff.map(u => (
-                <button key={u.staff_id} onClick={() => setSelectedUser(u)} style={{
-                  display:"flex", alignItems:"center", gap:10, padding:"10px 14px",
-                  borderRadius:10, cursor:"pointer", fontFamily:"'DM Sans', sans-serif", textAlign:"left",
-                  border: selectedUser?.staff_id === u.staff_id ? `2px solid ${ACCENT2}` : "1.5px solid #E5E7EB",
-                  background: selectedUser?.staff_id === u.staff_id ? ACCENT2+"0A" : "#fff",
-                  transition:"all .15s",
-                }}>
-                  {/* Access level circle */}
-                  <div style={{ width:34, height:34, borderRadius:"50%", background:levelColor(u.access_level)+"20", display:"grid", placeItems:"center", flexShrink:0 }}>
-                    <span style={{ fontWeight:800, fontSize:13, color:levelColor(u.access_level) }}>{u.access_level}</span>
-                  </div>
-                  <div style={{ flex:1, minWidth:0 }}>
-                    <div style={{ fontWeight:600, fontSize:13 }}>{u.title && u.title + " "}{u.first_name} {u.last_name}</div>
-                    <div style={{ fontSize:11, color:MUTED, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis" }}>
-                      {u.role_label} · {u.dept}
-                    </div>
-                  </div>
-                  <span title={u.biometric_enrolled ? "Biométrie enrolée" : "Non enrolée"} style={{
-                    width:8, height:8, borderRadius:"50%", flexShrink:0,
-                    background: u.biometric_enrolled ? GREEN : "#D1D5DB",
-                    display:"inline-block",
-                  }} />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Auth flow diagram */}
-          <div style={{ background:CARD, borderRadius:14, border:"1px solid #E5E7EB", padding:20 }}>
-            <div style={{ fontWeight:700, fontSize:14, marginBottom:12 }}>Flux d'authentification</div>
-            {[
-              { n:"1", t:"Clic sur option sensible",     done:!!selectedUser },
-              { n:"2", t:"Redirection portail SSC",      done:!!selectedUser },
-              { n:"3", t:"Demande d'auth biométrique",   done:camActive },
-              { n:"4", t:"Vérification annuaire",        done:step==="verifying"||step==="granted" },
-              { n:"5", t:"Reconnaissance faciale",       done:step==="granted" },
-              { n:"6", t:"Droits accordés — Accès",      done:step==="granted" },
-            ].map((s,i) => (
-              <div key={i} style={{ display:"flex", gap:10, alignItems:"center", padding:"5px 0", opacity:s.done ? 1 : 0.35, transition:"opacity .3s" }}>
-                <div style={{ width:22, height:22, borderRadius:"50%", background:s.done ? GREEN : "#E5E7EB", color:s.done?"#fff":MUTED, display:"grid", placeItems:"center", fontSize:10, fontWeight:700, flexShrink:0 }}>
-                  {s.done ? "✓" : s.n}
-                </div>
-                <span style={{ fontSize:13 }}>{s.t}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Right: auth panel */}
-        <div style={{ flex:"1 1 380px" }}>
-          <div style={{ background:CARD, borderRadius:14, border:"1px solid #E5E7EB", padding:20 }}>
-            <div style={{ fontWeight:700, fontSize:14, marginBottom:14, textAlign:"center" }}>2 — Méthode d'authentification</div>
+      <div style={{ maxWidth:480, margin:"0 auto" }}>
+          <div style={{ background:CARD, borderRadius:16, border:`1px solid ${BORDER}`, padding:20, boxShadow:"0 2px 10px rgba(0,0,0,.04)" }}>
+            <div style={{ fontWeight:700, fontSize:14, marginBottom:14, textAlign:"center", color:ACCENT }}>Méthode d'authentification</div>
 
             {/* ── Method tabs ───────────────────────────────────────────────── */}
             <div style={{ display:"flex", borderRadius:10, overflow:"hidden", border:"1.5px solid #E5E7EB", marginBottom:18 }}>
@@ -1508,7 +1604,7 @@ function BioBot() {
                   {stepLabels[step]}
                 </div>
                 <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
-                  {step === "idle"    && <Btn variant="accent" onClick={startCam} disabled={!selectedUser}>{selectedUser ? "Activer la caméra" : "Sélectionnez un utilisateur"}</Btn>}
+                  {step === "idle"    && <Btn variant="accent" onClick={startCam}>Activer la caméra</Btn>}
                   {step === "scanning" && <Btn variant="accent" onClick={simulateVerify}>Lancer la vérification</Btn>}
                   {(step === "granted" || step === "denied") && <Btn variant="ghost" onClick={reset}>Réinitialiser</Btn>}
                   {camActive && step !== "granted" && step !== "denied" && <Btn variant="ghost" onClick={stopCam}>Annuler</Btn>}
@@ -1530,9 +1626,7 @@ function BioBot() {
                     <div style={{ width:40, height:40, border:"3px solid #fff", borderTopColor:"transparent", borderRadius:"50%", animation:"spin .8s linear infinite" }} />
                   )}
                   {step !== "granted" && step !== "verifying" && (
-                    <div style={{ color:"rgba(255,255,255,.5)", fontSize:13 }}>
-                      {selectedUser ? `Badge : ${selectedUser.employee_number}` : "Sélectionnez un utilisateur, puis approchez votre badge"}
-                    </div>
+                    <div style={{ color:"rgba(255,255,255,.5)", fontSize:13 }}>Approchez votre badge</div>
                   )}
                   {step === "granted" && (
                     <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke={GREEN} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M20 6L9 17l-5-5"/></svg>
@@ -1542,7 +1636,12 @@ function BioBot() {
                   {stepLabels[step]}
                 </div>
                 <div style={{ display:"flex", justifyContent:"center", gap:10, marginTop:16, flexWrap:"wrap" }}>
-                  {step === "idle" && <Btn variant="accent" onClick={() => { setStep("verifying"); setTimeout(() => setStep("granted"), 1800); }} disabled={!selectedUser}>{selectedUser ? "Simuler lecture badge" : "Sélectionnez un utilisateur"}</Btn>}
+                  {step === "idle" && <Btn variant="accent" onClick={() => {
+                    const user = DB_STAFF.find(u => u.biometric_enrolled) || DB_STAFF[0];
+                    setSelectedUser(user);
+                    setStep("verifying");
+                    setTimeout(() => { setStep("granted"); setTimeout(() => onAuth && onAuth(user), 900); }, 1800);
+                  }}>Simuler lecture badge</Btn>}
                   {(step === "granted" || step === "denied") && <Btn variant="ghost" onClick={reset}>Réinitialiser</Btn>}
                 </div>
               </div>
@@ -1673,7 +1772,6 @@ function BioBot() {
               </div>
             )}
           </div>
-        </div>
       </div>
     </div>
   );
