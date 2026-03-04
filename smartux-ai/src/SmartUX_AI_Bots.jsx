@@ -8,6 +8,9 @@ import {
   AUTOCOMPLETE_CORPUS,
   ACCESS_PERMISSIONS,
   PERM_LABELS,
+  DB_IMAGERIE,
+  DB_OBSERVATIONS,
+  DB_CONSTANTES,
 } from "./database";
 
 const ACCENT  = "#0F4C75";
@@ -642,6 +645,330 @@ function DossierPanel({ prescriptions }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  IMAGERIE PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+function ImageriePanel() {
+  const [filter, setFilter] = useState("Tout");
+  const filters = ["Tout", "En attente", "Disponible", "Réalisé"];
+
+  const statusColor = { "En attente": AMBER, "Disponible": GREEN, "Réalisé": MUTED };
+
+  const examIcon = (
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="3" y="3" width="18" height="18" rx="3"/>
+      <circle cx="12" cy="12" r="4"/>
+      <path d="M16.5 7.5l.5-.5"/>
+    </svg>
+  );
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      {/* Filter bar */}
+      <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+        {filters.map(f => (
+          <button key={f} onClick={() => setFilter(f)} style={{
+            padding:"5px 14px", borderRadius:20, border:`1px solid ${filter === f ? ACCENT : BORDER}`,
+            background: filter === f ? ACCENT : CARD, color: filter === f ? "#fff" : MUTED,
+            fontWeight: filter === f ? 700 : 500, fontSize:12,
+            cursor:"pointer", fontFamily:"'DM Sans', sans-serif", transition:"all .15s",
+          }}>{f}</button>
+        ))}
+      </div>
+
+      {DB_PATIENTS.map(p => {
+        const examens = DB_IMAGERIE.filter(e =>
+          e.patient_id === p.patient_id &&
+          (filter === "Tout" || e.status === filter)
+        );
+        if (examens.length === 0) return null;
+        const age = new Date().getFullYear() - new Date(p.date_of_birth).getFullYear();
+        const allergies = KNOWN_ALLERGIES[p.patient_id] || [];
+
+        return (
+          <div key={p.patient_id} style={{ background:CARD, borderRadius:14, border:`1px solid ${BORDER}`, overflow:"hidden", boxShadow:"0 1px 4px rgba(0,0,0,.04)" }}>
+            {/* Patient header */}
+            <div style={{ display:"flex", alignItems:"center", gap:14, padding:"14px 20px", borderBottom:`1px solid ${BORDER}` }}>
+              <div style={{ width:40, height:40, borderRadius:10, flexShrink:0, background:(BLOOD_COLORS[p.blood_type] || ACCENT)+"18", display:"grid", placeItems:"center" }}>
+                <span style={{ fontWeight:800, fontSize:11, color:BLOOD_COLORS[p.blood_type] || ACCENT, fontFamily:"'Space Mono', monospace" }}>{p.blood_type}</span>
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                  <span style={{ fontWeight:700, fontSize:14, color:"#1A1A2E" }}>{p.gender === "F" ? "Mme" : "M."} {p.first_name} {p.last_name}</span>
+                  <span style={{ fontSize:11, color:MUTED, fontFamily:"'Space Mono', monospace" }}>{p.ipp}</span>
+                  {allergies.length > 0 && <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:5, background:RED+"18", color:RED }}>ALLERGIE</span>}
+                </div>
+                <div style={{ fontSize:12, color:MUTED, marginTop:1 }}>{p.ward} · Chambre {p.room} · {age} ans</div>
+              </div>
+              <span style={{ fontSize:12, color:MUTED, fontWeight:600 }}>{examens.length} examen{examens.length > 1 ? "s" : ""}</span>
+            </div>
+
+            {/* Exam grid */}
+            <div style={{ display:"grid", gridTemplateColumns:"repeat(auto-fill, minmax(280px, 1fr))", gap:12, padding:"14px 20px" }}>
+              {examens.map(e => {
+                const sColor = statusColor[e.status] || MUTED;
+                return (
+                  <div key={e.id} style={{ borderRadius:10, border:`1px solid ${BORDER}`, padding:"14px 16px", background:"#FAFBFC", display:"flex", flexDirection:"column", gap:6 }}>
+                    <div style={{ display:"flex", alignItems:"flex-start", gap:10 }}>
+                      <div style={{ flexShrink:0, marginTop:1 }}>{examIcon}</div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontWeight:700, fontSize:13, color:"#1A1A2E", lineHeight:1.3 }}>{e.type}</div>
+                        <div style={{ fontSize:11, color:MUTED, marginTop:2 }}>{new Date(e.date).toLocaleDateString("fr-FR", { day:"numeric", month:"long", year:"numeric" })}</div>
+                      </div>
+                    </div>
+                    <div style={{ display:"flex", gap:6, flexWrap:"wrap" }}>
+                      <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:5, background:sColor+"18", color:sColor }}>{e.status}</span>
+                      {e.priority === "URGENTE" && <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:5, background:RED+"18", color:RED }}>URGENTE</span>}
+                    </div>
+                    <p style={{ fontSize:12, color:MUTED, margin:0, lineHeight:1.5 }}>{e.description}</p>
+                    <div style={{ fontSize:11, color: e.reader ? ACCENT : MUTED, fontWeight: e.reader ? 600 : 400, marginTop:2 }}>
+                      {e.reader ? `🔬 ${e.reader}` : "En attente de lecture"}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  OBSERVATIONS PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+function ObservationsPanel() {
+  const [expanded, setExpanded] = useState(() =>
+    Object.fromEntries(DB_PATIENTS.map(p => [p.patient_id, true]))
+  );
+  const toggle = (id) => setExpanded(prev => ({ ...prev, [id]: !prev[id] }));
+
+  const catColor = { "Entrée": ACCENT, "Évolution": MUTED, "Urgence": RED, "Sortie": GREEN };
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:14 }}>
+      {DB_PATIENTS.map(p => {
+        const notes = DB_OBSERVATIONS.filter(o => o.patient_id === p.patient_id);
+        const constantes = DB_CONSTANTES.filter(c => c.patient_id === p.patient_id)
+          .sort((a, b) => new Date(b.date) - new Date(a.date));
+        const allergies = KNOWN_ALLERGIES[p.patient_id] || [];
+        const age = new Date().getFullYear() - new Date(p.date_of_birth).getFullYear();
+        const isOpen = !!expanded[p.patient_id];
+
+        return (
+          <div key={p.patient_id} style={{
+            background:CARD, borderRadius:14, border:`1px solid ${isOpen ? ACCENT+"30" : BORDER}`,
+            boxShadow: isOpen ? "0 4px 16px rgba(15,76,117,.08)" : "0 1px 4px rgba(0,0,0,.04)",
+            overflow:"hidden", transition:"box-shadow .2s, border-color .2s",
+          }}>
+            {/* Header */}
+            <button onClick={() => toggle(p.patient_id)} style={{
+              width:"100%", display:"flex", alignItems:"center", gap:14, padding:"16px 20px",
+              background:"none", border:"none", cursor:"pointer", fontFamily:"'DM Sans', sans-serif",
+              borderBottom: isOpen ? `1px solid ${BORDER}` : "none",
+            }}>
+              <div style={{ width:44, height:44, borderRadius:12, flexShrink:0, background:(BLOOD_COLORS[p.blood_type] || ACCENT)+"18", display:"grid", placeItems:"center" }}>
+                <span style={{ fontWeight:800, fontSize:12, color:BLOOD_COLORS[p.blood_type] || ACCENT, fontFamily:"'Space Mono', monospace" }}>{p.blood_type}</span>
+              </div>
+              <div style={{ flex:1, minWidth:0 }}>
+                <div style={{ display:"flex", alignItems:"center", gap:8, flexWrap:"wrap" }}>
+                  <span style={{ fontWeight:700, fontSize:15, color:"#1A1A2E" }}>{p.gender === "F" ? "Mme" : "M."} {p.first_name} {p.last_name}</span>
+                  <span style={{ fontSize:11, color:MUTED, fontFamily:"'Space Mono', monospace" }}>{p.ipp}</span>
+                  {allergies.length > 0 && <span style={{ fontSize:10, fontWeight:700, padding:"2px 7px", borderRadius:5, background:RED+"18", color:RED }}>ALLERGIE</span>}
+                </div>
+                <div style={{ fontSize:12, color:MUTED, marginTop:2 }}>{p.ward} · Chambre {p.room} · {age} ans</div>
+              </div>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={MUTED} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                style={{ flexShrink:0, transition:"transform .2s", transform: isOpen ? "rotate(180deg)" : "none" }}>
+                <path d="M6 9l6 6 6-6"/>
+              </svg>
+            </button>
+
+            {isOpen && (
+              <div style={{ display:"flex", gap:0, flexWrap:"wrap" }}>
+                {/* Left: Notes cliniques */}
+                <div style={{ flex:"1 1 300px", padding:"16px 20px", borderRight:`1px solid ${BORDER}` }}>
+                  <div style={{ fontWeight:700, fontSize:11, color:MUTED, textTransform:"uppercase", letterSpacing:.5, marginBottom:12 }}>Notes cliniques</div>
+                  <div style={{ display:"flex", flexDirection:"column", gap:10 }}>
+                    {notes.map(n => {
+                      const cc = catColor[n.category] || MUTED;
+                      return (
+                        <div key={n.id} style={{ padding:"10px 12px", borderRadius:9, border:`1px solid ${BORDER}`, background:"#FAFBFC" }}>
+                          <div style={{ display:"flex", alignItems:"center", gap:8, marginBottom:6, flexWrap:"wrap" }}>
+                            <span style={{ fontSize:10, fontWeight:700, padding:"2px 8px", borderRadius:5, background:cc+"18", color:cc }}>{n.category}</span>
+                            <span style={{ fontSize:11, color:MUTED }}>{new Date(n.date).toLocaleDateString("fr-FR", { day:"numeric", month:"short", year:"numeric", hour:"2-digit", minute:"2-digit" })}</span>
+                            <span style={{ fontSize:11, fontWeight:600, color:ACCENT }}>{n.author}</span>
+                          </div>
+                          <p style={{ fontSize:13, color:"#2D3748", margin:0, lineHeight:1.6 }}>{n.text}</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Right: Constantes */}
+                <div style={{ flex:"0 0 340px", padding:"16px 20px" }}>
+                  <div style={{ fontWeight:700, fontSize:11, color:MUTED, textTransform:"uppercase", letterSpacing:.5, marginBottom:12 }}>Constantes vitales</div>
+                  <div style={{ overflowX:"auto" }}>
+                    <table style={{ fontSize:12, width:"100%", borderCollapse:"collapse" }}>
+                      <thead>
+                        <tr>
+                          {["Date", "TA", "FC", "Temp", "SpO2", "Poids"].map(h => (
+                            <th key={h} style={{ fontWeight:700, fontSize:11, color:MUTED, textAlign:"left", padding:"4px 8px 8px", borderBottom:`1px solid ${BORDER}`, whiteSpace:"nowrap" }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {constantes.map((c, i) => (
+                          <tr key={c.id} style={{ background: i === 0 ? ACCENT+"08" : "transparent" }}>
+                            <td style={{ padding:"5px 8px", fontSize:11, color:MUTED, whiteSpace:"nowrap" }}>
+                              {new Date(c.date).toLocaleDateString("fr-FR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}
+                            </td>
+                            {[`${c.ta} mmHg`, `${c.fc} bpm`, `${c.temp} °C`, `${c.spo2}%`, `${c.poids} kg`].map((v, j) => (
+                              <td key={j} style={{ padding:"5px 8px", fontWeight: i === 0 ? 700 : 400, color: i === 0 ? "#1A1A2E" : "#2D3748", whiteSpace:"nowrap" }}>{v}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  PARAMETRES PANEL
+// ─────────────────────────────────────────────────────────────────────────────
+function ParametresPanel({ user }) {
+  const [fontSize, setFontSize] = useState(14);
+  const [density, setDensity]   = useState("Normal");
+
+  if (!user) return null;
+
+  const perms = ACCESS_PERMISSIONS[user.access_level] || [];
+
+  const sectionTitle = (label) => (
+    <div style={{ fontWeight:700, fontSize:13, color:ACCENT, textTransform:"uppercase", letterSpacing:.8, padding:"18px 0 10px", borderBottom:`2px solid ${ACCENT}22`, marginBottom:14 }}>
+      {label}
+    </div>
+  );
+
+  return (
+    <div style={{ display:"flex", flexDirection:"column", gap:0, maxWidth:760 }}>
+
+      {/* ── 1. Profil utilisateur ── */}
+      {sectionTitle("Profil utilisateur")}
+      <div style={{ background:CARD, borderRadius:12, border:`1px solid ${BORDER}`, padding:"20px 24px", marginBottom:20 }}>
+        <table style={{ fontSize:13, lineHeight:2.1, width:"100%" }}>
+          <tbody>
+            {[
+              ["Nom complet",     `${user.title ? user.title + " " : ""}${user.first_name} ${user.last_name}`.trim() || "—"],
+              ["N° employé",      user.employee_number],
+              ["Rôle",            user.role_label],
+              ["Service",         user.dept],
+              ["Spécialité",      user.specialty || "—"],
+              ["Niveau d'accès",  `Niveau ${user.access_level}`],
+            ].map(([k, v]) => (
+              <tr key={k}>
+                <td style={{ color:MUTED, fontWeight:600, paddingRight:20, whiteSpace:"nowrap", fontSize:12, width:160 }}>{k}</td>
+                <td style={{ fontWeight:500, color:"#1A1A2E" }}>{v}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+
+        {/* Biométrie */}
+        <div style={{ marginTop:14, display:"flex", alignItems:"center", gap:8 }}>
+          <span style={{ fontSize:12, color:MUTED, fontWeight:600 }}>Biométrie :</span>
+          <span style={{ fontSize:11, fontWeight:700, padding:"3px 10px", borderRadius:20, background: user.biometric_enrolled ? GREEN+"18" : MUTED+"18", color: user.biometric_enrolled ? GREEN : MUTED }}>
+            {user.biometric_enrolled ? "✓ Enrôlée" : "Non enrôlée"}
+          </span>
+        </div>
+
+        {/* Permissions */}
+        <div style={{ marginTop:16 }}>
+          <div style={{ fontWeight:700, fontSize:11, color:MUTED, textTransform:"uppercase", letterSpacing:.5, marginBottom:8 }}>Permissions accordées</div>
+          <div style={{ display:"flex", flexWrap:"wrap", gap:6 }}>
+            {perms.map(perm => (
+              <span key={perm} style={{ fontSize:11, fontWeight:600, padding:"4px 10px", borderRadius:6, background:GREEN+"15", color:GREEN, border:`1px solid ${GREEN}30` }}>
+                {PERM_LABELS[perm] || perm}
+              </span>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* ── 2. Préférences d'affichage ── */}
+      {sectionTitle("Préférences d'affichage")}
+      <div style={{ background:CARD, borderRadius:12, border:`1px solid ${BORDER}`, padding:"20px 24px", marginBottom:20 }}>
+        <div style={{ display:"flex", flexDirection:"column", gap:16 }}>
+          {/* Font size */}
+          <div style={{ display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
+            <span style={{ fontSize:13, fontWeight:600, color:"#1A1A2E", minWidth:160 }}>Taille de texte</span>
+            <div style={{ display:"flex", gap:4 }}>
+              {[{ label:"S", val:13 }, { label:"M", val:14 }, { label:"L", val:15 }].map(({ label, val }) => (
+                <button key={val} onClick={() => setFontSize(val)} style={{
+                  width:36, height:36, borderRadius:8, border:`1px solid ${fontSize === val ? ACCENT : BORDER}`,
+                  background: fontSize === val ? ACCENT : "transparent",
+                  color: fontSize === val ? "#fff" : MUTED,
+                  fontWeight:700, fontSize: label === "S" ? 11 : label === "M" ? 13 : 15,
+                  cursor:"pointer", fontFamily:"'DM Sans', sans-serif",
+                }}>{label}</button>
+              ))}
+            </div>
+          </div>
+          {/* Density */}
+          <div style={{ display:"flex", alignItems:"center", gap:16, flexWrap:"wrap" }}>
+            <span style={{ fontSize:13, fontWeight:600, color:"#1A1A2E", minWidth:160 }}>Densité d'affichage</span>
+            <div style={{ display:"flex", gap:4 }}>
+              {["Compact", "Normal"].map(d => (
+                <button key={d} onClick={() => setDensity(d)} style={{
+                  padding:"6px 18px", borderRadius:8, border:`1px solid ${density === d ? ACCENT : BORDER}`,
+                  background: density === d ? ACCENT : "transparent",
+                  color: density === d ? "#fff" : MUTED,
+                  fontWeight: density === d ? 700 : 500, fontSize:12,
+                  cursor:"pointer", fontFamily:"'DM Sans', sans-serif",
+                }}>{d}</button>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div style={{ marginTop:14, fontSize:11, color:MUTED, fontStyle:"italic" }}>
+          Les préférences sont réinitialisées à la déconnexion.
+        </div>
+      </div>
+
+      {/* ── 3. Configuration système ── */}
+      {sectionTitle("Configuration système")}
+      <div style={{ background:CARD, borderRadius:12, border:`1px solid ${BORDER}`, padding:"20px 24px" }}>
+        <table style={{ fontSize:13, lineHeight:2.1, width:"100%" }}>
+          <tbody>
+            {[
+              ["URL API",       "http://localhost:3001"],
+              ["Modèle LLM",    "llama-3.3-70b-versatile (Groq)"],
+              ["Projet",        "SILLAGE — CRIStAL × Centrale Lille"],
+              ["Version",       "1.0.0"],
+              ["Environnement", "Développement"],
+            ].map(([k, v]) => (
+              <tr key={k}>
+                <td style={{ color:MUTED, fontWeight:600, paddingRight:20, whiteSpace:"nowrap", fontSize:12, width:160 }}>{k}</td>
+                <td style={{ fontWeight:500, color:"#1A1A2E", fontFamily: k === "URL API" || k === "Modèle LLM" ? "'Space Mono', monospace" : "inherit", fontSize: k === "URL API" || k === "Modèle LLM" ? 12 : 13 }}>{v}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  TABS
 // ─────────────────────────────────────────────────────────────────────────────
 const tabs = [
@@ -650,14 +977,10 @@ const tabs = [
 ];
 
 const subTabs = [
-  { id:"dossier",      label:"Dossier",       iconType:"folder" },
-  { id:"observations", label:"Observations",   iconType:"eye" },
-  { id:"prescriptions",label:"Prescriptions",  iconType:"pill" },
-  { id:"labo",         label:"Labo",           iconType:"flask" },
-  { id:"imagerie",     label:"Imagerie",       iconType:"image" },
-  { id:"constantes",   label:"Constantes",     iconType:"activity" },
-  { id:"personnel",    label:"Personnel",      iconType:"user" },
-  { id:"parametres",   label:"Parametres",     iconType:"settings" },
+  { id:"dossier",      label:"Dossier",      iconType:"folder"   },
+  { id:"observations", label:"Observations", iconType:"eye"      },
+  { id:"imagerie",     label:"Imagerie",     iconType:"image"    },
+  { id:"parametres",   label:"Paramètres",   iconType:"settings" },
 ];
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -852,36 +1175,51 @@ export default function SmartUXBots() {
       </header>
 
       {/* ── MAIN ───────────────────────────────────────────────────────────── */}
-      <main style={{ maxWidth:1000, margin:"0 auto", padding:"32px 24px 80px" }}>
-        {/* Sub-tab content */}
-        {activeSubTab === "dossier" && (
-          <div style={{ marginBottom:24, animation:"tabIn .22s ease both" }}>
-            <DossierPanel prescriptions={prescriptions} />
-          </div>
-        )}
-        {activeSubTab && activeSubTab !== "dossier" && (
-          <div style={{
-            background:CARD, borderRadius:12, border:`1px solid ${BORDER}`,
-            padding:"24px 28px", marginBottom:24,
-            boxShadow:"0 2px 10px rgba(0,0,0,.04)",
-          }}>
-            <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
-              <Icon type={subTabs.find(s => s.id === activeSubTab)?.iconType || "folder"} size={18} color={ACCENT} />
-              <span style={{ fontWeight:700, fontSize:16, color:ACCENT }}>
-                {subTabs.find(s => s.id === activeSubTab)?.label}
-              </span>
-            </div>
-            <div style={{ color:MUTED, fontSize:13, lineHeight:1.6 }}>
-              Module en cours de développement — Ce panneau sera connecté au système SILLAGE pour afficher les données de {subTabs.find(s => s.id === activeSubTab)?.label.toLowerCase()}.
-            </div>
-          </div>
-        )}
+      <main style={{ maxWidth:["dossier","observations","imagerie","parametres"].includes(activeSubTab) ? 1380 : 1000, margin:"0 auto", padding:"32px 24px 80px" }}>
 
-        {activeSubTab !== "dossier" && (
-          <div className="tab-content" key={activeTab}>
-            {activeTab === "nlp" && <NLPBot onPrescription={addPrescription} />}
-            {activeTab === "rx"  && <RxTab prescriptions={prescriptions} onUpdate={updatePrescription} />}
+        {["dossier","observations","imagerie","parametres"].includes(activeSubTab) ? (
+          /* ── Two-column: panel + NLP sidebar ── */
+          <div style={{ display:"flex", gap:20, alignItems:"flex-start" }}>
+
+            {/* Panel */}
+            <div style={{ flex:1, minWidth:0, animation:"tabIn .22s ease both" }}>
+              {activeSubTab === "dossier"      && <DossierPanel prescriptions={prescriptions} />}
+              {activeSubTab === "observations" && <ObservationsPanel />}
+              {activeSubTab === "imagerie"     && <ImageriePanel />}
+              {activeSubTab === "parametres"   && <ParametresPanel user={authenticatedUser} />}
+            </div>
+
+            {/* NLP assistant sidebar */}
+            <div style={{ width:360, flexShrink:0, position:"sticky", top:110 }}>
+              <NLPBot onPrescription={addPrescription} compact />
+            </div>
           </div>
+
+        ) : (
+          /* ── Normal layout ── */
+          <>
+            {activeSubTab && (
+              <div style={{
+                background:CARD, borderRadius:12, border:`1px solid ${BORDER}`,
+                padding:"24px 28px", marginBottom:24,
+                boxShadow:"0 2px 10px rgba(0,0,0,.04)",
+              }}>
+                <div style={{ display:"flex", alignItems:"center", gap:10, marginBottom:8 }}>
+                  <Icon type={subTabs.find(s => s.id === activeSubTab)?.iconType || "folder"} size={18} color={ACCENT} />
+                  <span style={{ fontWeight:700, fontSize:16, color:ACCENT }}>
+                    {subTabs.find(s => s.id === activeSubTab)?.label}
+                  </span>
+                </div>
+                <div style={{ color:MUTED, fontSize:13, lineHeight:1.6 }}>
+                  Module en cours de développement — Ce panneau sera connecté au système SILLAGE pour afficher les données de {subTabs.find(s => s.id === activeSubTab)?.label.toLowerCase()}.
+                </div>
+              </div>
+            )}
+            <div className="tab-content" key={activeTab}>
+              {activeTab === "nlp" && <NLPBot onPrescription={addPrescription} />}
+              {activeTab === "rx"  && <RxTab prescriptions={prescriptions} onUpdate={updatePrescription} />}
+            </div>
+          </>
         )}
       </main>
     </div>
@@ -891,7 +1229,7 @@ export default function SmartUXBots() {
 // ─────────────────────────────────────────────────────────────────────────────
 //  NLP BOT
 // ─────────────────────────────────────────────────────────────────────────────
-function NLPBot({ onPrescription }) {
+function NLPBot({ onPrescription, compact = false }) {
   const [input, setInput]         = useState("");
   const [history, setHistory]     = useState([]);
   const [loading, setLoading]     = useState(false);
@@ -958,23 +1296,51 @@ function NLPBot({ onPrescription }) {
     setSaved(s => ({ ...s, [rx.prescription_id]: true }));
   };
   return (
-    <div>
+    <div style={compact ? {
+      background:CARD, borderRadius:14, border:`1px solid ${BORDER}`,
+      boxShadow:"0 4px 20px rgba(15,76,117,.09)", display:"flex", flexDirection:"column", overflow:"hidden",
+    } : {}}>
 
-      {/* Examples */}
-      <div style={{ marginBottom:16, display:"flex", flexWrap:"wrap", gap:6 }}>
-        <span style={{ fontSize:12, color:MUTED, marginRight:4, paddingTop:4 }}>Exemples :</span>
-        {examples.map((ex,i) => (
-          <button key={i} onClick={() => setInput(ex)} style={{
-            padding:"5px 12px", borderRadius:20, border:"1px solid #D1D5DB",
-            background:"#fff", fontSize:12, color:"#374151", cursor:"pointer",
-            fontFamily:"'DM Sans', sans-serif",
-            maxWidth:300, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
-          }}>{ex}</button>
-        ))}
-      </div>
+      {/* Compact header */}
+      {compact && (
+        <div style={{ padding:"13px 16px", borderBottom:`1px solid ${BORDER}`, background:ACCENT+"08", display:"flex", alignItems:"center", gap:10, flexShrink:0 }}>
+          <div style={{ width:32, height:32, borderRadius:9, background:ACCENT2+"18", display:"grid", placeItems:"center", flexShrink:0 }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={ACCENT2} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            </svg>
+          </div>
+          <div>
+            <div style={{ fontWeight:700, fontSize:13, color:ACCENT }}>Assistant IA</div>
+            <div style={{ fontSize:11, color:MUTED }}>Aide clinique contextuelle</div>
+          </div>
+        </div>
+      )}
+
+      {/* Examples — hidden in compact mode */}
+      {!compact && (
+        <div style={{ marginBottom:16, display:"flex", flexWrap:"wrap", gap:6 }}>
+          <span style={{ fontSize:12, color:MUTED, marginRight:4, paddingTop:4 }}>Exemples :</span>
+          {examples.map((ex,i) => (
+            <button key={i} onClick={() => setInput(ex)} style={{
+              padding:"5px 12px", borderRadius:20, border:"1px solid #D1D5DB",
+              background:"#fff", fontSize:12, color:"#374151", cursor:"pointer",
+              fontFamily:"'DM Sans', sans-serif",
+              maxWidth:300, whiteSpace:"nowrap", overflow:"hidden", textOverflow:"ellipsis",
+            }}>{ex}</button>
+          ))}
+        </div>
+      )}
 
       {/* Chat area */}
-      <div style={{ background:CARD, borderRadius:16, border:`1px solid ${BORDER}`, minHeight:340, maxHeight:520, overflowY:"auto", padding:"20px 22px", display:"flex", flexDirection:"column", gap:14, boxShadow:"0 2px 12px rgba(0,0,0,.04)" }}>
+      <div style={{
+        background:CARD,
+        borderRadius: compact ? 0 : 16,
+        border: compact ? "none" : `1px solid ${BORDER}`,
+        minHeight: compact ? 220 : 340,
+        maxHeight: compact ? 420 : 520,
+        overflowY:"auto", padding:"16px 18px", display:"flex", flexDirection:"column", gap:14,
+        boxShadow: compact ? "none" : "0 2px 12px rgba(0,0,0,.04)",
+      }}>
         {history.length === 0 && (
           <div style={{ flex:1, display:"grid", placeItems:"center", color:"#CBD5E1", fontSize:14 }}>
             Commencez à saisir une phrase pour voir l'extraction NLP et l'enregistrement en base…
@@ -1104,17 +1470,37 @@ function NLPBot({ onPrescription }) {
       </div>
 
       {/* Input bar with autocomplete */}
-      <div style={{ display:"flex", gap:10, marginTop:14, alignItems:"flex-start" }}>
+      <div style={{
+        display:"flex", gap:8, alignItems:"flex-start",
+        marginTop: compact ? 0 : 14,
+        padding: compact ? "12px 16px" : 0,
+        borderTop: compact ? `1px solid ${BORDER}` : "none",
+        background: compact ? CARD : "transparent",
+        flexShrink: 0,
+      }}>
         <AutocompleteInput
           value={input}
           onChange={setInput}
           onSubmit={send}
           loading={loading}
-          placeholder={pendingDelay ? "Saisissez le délai imparti (ex : 2h, 24h, 3 jours, aucun)…" : undefined}
+          placeholder={pendingDelay ? "Saisissez le délai imparti…" : compact ? "Posez votre question…" : undefined}
         />
-        <Btn onClick={() => send(input)} disabled={loading || !input.trim()}>
-          {pendingDelay ? "Confirmer" : "Analyser"}
-        </Btn>
+        {compact ? (
+          <button onClick={() => send(input)} disabled={loading || !input.trim()} style={{
+            width:38, height:38, borderRadius:10, border:"none", flexShrink:0,
+            background: (loading || !input.trim()) ? BORDER : ACCENT,
+            color:"#fff", cursor: (loading || !input.trim()) ? "not-allowed" : "pointer",
+            display:"grid", placeItems:"center", transition:"background .15s",
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+            </svg>
+          </button>
+        ) : (
+          <Btn onClick={() => send(input)} disabled={loading || !input.trim()}>
+            {pendingDelay ? "Confirmer" : "Analyser"}
+          </Btn>
+        )}
       </div>
     </div>
   );
