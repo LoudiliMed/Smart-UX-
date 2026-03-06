@@ -1298,6 +1298,8 @@ export default function SmartUXBots() {
   const [activeSubTab, setActiveSubTab] = useState(null);
   // Shared prescriptions store (written by NLPBot, read by RxTab)
   const [prescriptions, setPrescriptions] = useState([]);
+  const [selectedPatientId, setSelectedPatientId] = useState(null);
+  const selectedPatient = DB_PATIENTS.find(p => p.patient_id === selectedPatientId) || null;
 
   useEffect(() => {
     fetch("http://localhost:3001/api/prescriptions")
@@ -1498,7 +1500,13 @@ export default function SmartUXBots() {
 
             {/* NLP assistant sidebar */}
             <div style={{ width:360, flexShrink:0, position:"sticky", top:110 }}>
-              <NLPBot onPrescription={addPrescription} compact />
+              <NLPBot
+                onPrescription={addPrescription}
+                onPatientResolved={setSelectedPatientId}
+                patient={selectedPatient}
+                prescriptions={prescriptions.filter(r => r.patient_id === selectedPatientId)}
+                compact
+              />
             </div>
           </div>
 
@@ -1523,7 +1531,12 @@ export default function SmartUXBots() {
               </div>
             )}
             <div className="tab-content" key={activeTab}>
-              {activeTab === "nlp" && <NLPBot onPrescription={addPrescription} />}
+              {activeTab === "nlp" && <NLPBot
+                onPrescription={addPrescription}
+                onPatientResolved={setSelectedPatientId}
+                patient={selectedPatient}
+                prescriptions={prescriptions.filter(r => r.patient_id === selectedPatientId)}
+              />}
               {activeTab === "rx"  && <RxTab prescriptions={prescriptions} onUpdate={updatePrescription} />}
             </div>
           </>
@@ -1536,7 +1549,7 @@ export default function SmartUXBots() {
 // ─────────────────────────────────────────────────────────────────────────────
 //  NLP BOT
 // ─────────────────────────────────────────────────────────────────────────────
-function NLPBot({ onPrescription, compact = false }) {
+function NLPBot({ onPrescription, onPatientResolved, patient = null, prescriptions = [], compact = false }) {
   const [input, setInput]         = useState("");
   const [history, setHistory]     = useState([]);
   const [loading, setLoading]     = useState(false);
@@ -1587,11 +1600,14 @@ function NLPBot({ onPrescription, compact = false }) {
     const structured = await parseWithClaude(corrected);
     const rx = mapNLPToPrescription(structured, corrected);
     setHistory(h => [...h, { role:"bot", text:structured, rx }]);
+    if (rx._matched_patient && onPatientResolved) {
+      onPatientResolved(rx._matched_patient.patient_id);
+    }
     // Ask for delay
     setHistory(h => [...h, { role:"bot-question", text:"Quel est le délai imparti pour cet acte ? (ex : 2h, 24h, 3 jours, ou « aucun »)" }]);
     setPendingDelay({ rx });
     setLoading(false);
-  }, [pendingDelay]);
+  }, [pendingDelay, onPatientResolved]);
 
   const handleSave = async (rx) => {
     await fetch("http://localhost:3001/api/prescriptions", {
