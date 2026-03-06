@@ -99,7 +99,7 @@ const GROQ_API_KEY = "REDACTED_GROQ_API_KEY";
 
 app.post("/api/claude", async (req, res) => {
   try {
-    const userMessage = req.body.messages[0].content;
+    const { messages, max_tokens = 1000 } = req.body;
     const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -108,8 +108,8 @@ app.post("/api/claude", async (req, res) => {
       },
       body: JSON.stringify({
         model: "llama-3.3-70b-versatile",
-        messages: [{ role: "user", content: userMessage }],
-        max_tokens: 1000,
+        messages,
+        max_tokens,
         temperature: 0.1,
       }),
     });
