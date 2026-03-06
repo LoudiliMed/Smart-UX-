@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: Completed 01-safety-foundation 01-02-PLAN.md
-last_updated: "2026-03-06T03:36:52Z"
-last_activity: 2026-03-06 — Phase 1 complete (2/2 plans done)
+status: completed
+stopped_at: Completed 02-alert-system 02-01-PLAN.md
+last_updated: "2026-03-06T16:45:23.318Z"
+last_activity: 2026-03-06 — Phase 1 both plans executed
 progress:
   total_phases: 3
   completed_phases: 1
-  total_plans: 2
-  completed_plans: 2
+  total_plans: 4
+  completed_plans: 3
   percent: 100
 ---
 
@@ -52,6 +52,7 @@ Progress: [██████████] 100% (Phase 1 complete)
 *Updated after each plan completion*
 | Phase 01-safety-foundation P01 | 12 min | 2 tasks | 3 files |
 | Phase 01-safety-foundation P02 | 2 min | 2 tasks | 2 files |
+| Phase 02-alert-system P01 | 3 | 2 tasks | 3 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,9 @@ Recent decisions affecting current work:
 - [Phase 01-safety-foundation P02]: Dual-layer disclaimer: system prompt mandates + wrapper prepends as failsafe (model drift protection)
 - [Phase 01-safety-foundation P02]: history=[] default enables Phase 3 multi-turn without breaking Phase 2 single-turn calls
 - [Phase 01-safety-foundation P02]: API errors propagate as thrown errors — callers own error UX (wrapper stays thin)
+- [Phase 02-alert-system]: Proxy fix is surgical: only /api/claude handler changed, no other routes touched
+- [Phase 02-alert-system]: AlertSystem is self-contained in SmartUX_AI_Bots.jsx — not yet wired to root (Plan 02-02 handles wiring)
+- [Phase 02-alert-system]: Race condition prevention via requestIdRef counter: stale async responses ignored on patient/drug change
 
 ### Pending Todos
 
@@ -81,6 +85,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T03:36:52Z
-Stopped at: Completed 01-safety-foundation 01-02-PLAN.md
+Last session: 2026-03-06T16:45:23.316Z
+Stopped at: Completed 02-alert-system 02-01-PLAN.md
 Resume file: None

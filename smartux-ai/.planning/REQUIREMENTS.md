@@ -12,9 +12,9 @@
 
 ### Alert System
 
-- [ ] **ALRT-01**: System automatically checks the prescription draft against the patient's dossier when a drug is entered (allergy conflict, drug-drug interaction, contraindication, dosage warning)
-- [ ] **ALRT-02**: Every alert displays a patient identity header showing which patient the warning applies to
-- [ ] **ALRT-03**: MODERE and FAIBLE alerts can be dismissed silently without justification
+- [x] **ALRT-01**: System automatically checks the prescription draft against the patient's dossier when a drug is entered (allergy conflict, drug-drug interaction, contraindication, dosage warning)
+- [x] **ALRT-02**: Every alert displays a patient identity header showing which patient the warning applies to
+- [x] **ALRT-03**: MODERE and FAIBLE alerts can be dismissed silently without justification
 
 ### ChatPanel
 
@@ -25,7 +25,7 @@
 ### UX
 
 - [ ] **UX-01**: Chat panel opens and closes as a dismissible drawer that does not cover the prescription form
-- [ ] **UX-02**: Alert severity is visually distinct: Red for CRITIQUE, Orange for MODERE, Grey for FAIBLE
+- [x] **UX-02**: Alert severity is visually distinct: Red for CRITIQUE, Orange for MODERE, Grey for FAIBLE
 
 ## v2 Requirements
 
@@ -64,10 +64,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 |-------------|-------|--------|
 | SAFE-01 | Phase 1 | Complete |
 | SAFE-02 | Phase 1 | Complete |
-| ALRT-01 | Phase 2 | Pending |
-| ALRT-02 | Phase 2 | Pending |
-| ALRT-03 | Phase 2 | Pending |
-| UX-02 | Phase 2 | Pending |
+| ALRT-01 | Phase 2 | Complete |
+| ALRT-02 | Phase 2 | Complete |
+| ALRT-03 | Phase 2 | Complete |
+| UX-02 | Phase 2 | Complete |
 | CHAT-01 | Phase 3 | Pending |
 | CHAT-02 | Phase 3 | Pending |
 | CHAT-03 | Phase 3 | Pending |
