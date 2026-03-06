@@ -13,7 +13,7 @@ Three phases build the clinical chatbot from its foundation up. Phase 1 construc
 Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Safety Foundation** - Build the patient dossier context builder and Claude wrapper that power all safety checks
-- [ ] **Phase 2: Alert System** - Add proactive drug safety alerts that fire when a prescription draft changes
+- [x] **Phase 2: Alert System** - Add proactive drug safety alerts that fire when a prescription draft changes
 - [ ] **Phase 3: Chat Panel** - Add the dismissible free-form clinical Q&A drawer with streaming responses
 
 ## Phase Details
@@ -44,8 +44,8 @@ Plans:
 **Plans**: 2 plans
 
 Plans:
-- [ ] 02-01-PLAN.md — Fix proxy system prompt forwarding, build `parseAlertResponse`, `AlertBanner`, `AlertSystem` with 12-test TDD suite (ALRT-01, ALRT-02, ALRT-03, UX-02)
-- [ ] 02-02-PLAN.md — Wire `selectedPatientId` to root state, connect `AlertSystem` inside `NLPBot` with patient/prescriptions props, human verify (ALRT-01, ALRT-02, ALRT-03, UX-02)
+- [x] 02-01-PLAN.md — Fix proxy system prompt forwarding, build `parseAlertResponse`, `AlertBanner`, `AlertSystem` with 12-test TDD suite (ALRT-01, ALRT-02, ALRT-03, UX-02)
+- [x] 02-02-PLAN.md — Wire `selectedPatientId` to root state, connect `AlertSystem` inside `NLPBot` with patient/prescriptions props, human verify (ALRT-01, ALRT-02, ALRT-03, UX-02)
 
 ### Phase 3: Chat Panel
 **Goal**: A doctor can open a chat drawer, ask free-form clinical questions about the selected patient, receive streaming AI answers, and have the conversation clear automatically when they switch patients
@@ -70,5 +70,5 @@ Phases execute in numeric order: 1 → 2 → 3
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Safety Foundation | 2/2 | Complete | 2026-03-06 |
-| 2. Alert System | 1/2 | In Progress|  |
+| 2. Alert System | 2/2 | Complete | 2026-03-06 |
 | 3. Chat Panel | 0/2 | Not started | - |

@@ -2,15 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: completed
-stopped_at: Completed 02-alert-system 02-01-PLAN.md
-last_updated: "2026-03-06T16:45:23.318Z"
-last_activity: 2026-03-06 — Phase 1 both plans executed
+status: in-progress
+stopped_at: Completed 02-alert-system 02-02-PLAN.md
+last_updated: "2026-03-06T17:15:00.000Z"
+last_activity: 2026-03-06 — Phase 2 plan 02-02 complete (AlertSystem wiring + human verification)
 progress:
   total_phases: 3
   completed_phases: 1
   total_plans: 4
-  completed_plans: 3
+  completed_plans: 4
   percent: 100
 ---
 
@@ -21,16 +21,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** The doctor never unknowingly prescribes something that could harm the patient — every prescription is checked against the patient's full dossier in real time
-**Current focus:** Phase 1 complete — Ready for Phase 2 (AlertSystem)
+**Current focus:** Phase 2 complete — AlertSystem built, wired, and human-verified end-to-end
 
 ## Current Position
 
-Phase: 1 of 3 (Safety Foundation) — COMPLETE
+Phase: 2 of 3 (Alert System) — COMPLETE
 Plan: 2 of 2 in current phase — COMPLETE
-Status: Phase 1 done, ready for Phase 2
-Last activity: 2026-03-06 — Phase 1 both plans executed
+Status: Phase 2 done, ready for Phase 3
+Last activity: 2026-03-06 — Phase 2 both plans executed (02-01 AlertSystem components, 02-02 wiring)
 
-Progress: [██████████] 100% (Phase 1 complete)
+Progress: [██████████████] Phase 2 complete (4/4 plans across phases 1-2)
 
 ## Performance Metrics
 
@@ -52,7 +52,8 @@ Progress: [██████████] 100% (Phase 1 complete)
 *Updated after each plan completion*
 | Phase 01-safety-foundation P01 | 12 min | 2 tasks | 3 files |
 | Phase 01-safety-foundation P02 | 2 min | 2 tasks | 2 files |
-| Phase 02-alert-system P01 | 3 | 2 tasks | 3 files |
+| Phase 02-alert-system P01 | 3 min | 2 tasks | 3 files |
+| Phase 02-alert-system P02 | 20 min | 3 tasks | 1 file |
 
 ## Accumulated Context
 
@@ -72,6 +73,9 @@ Recent decisions affecting current work:
 - [Phase 02-alert-system]: Proxy fix is surgical: only /api/claude handler changed, no other routes touched
 - [Phase 02-alert-system]: AlertSystem is self-contained in SmartUX_AI_Bots.jsx — not yet wired to root (Plan 02-02 handles wiring)
 - [Phase 02-alert-system]: Race condition prevention via requestIdRef counter: stale async responses ignored on patient/drug change
+- [Phase 02-alert-system P02]: AlertSystem placed inside NLPBot return — keeps alert context co-located with NLP interaction that triggered it
+- [Phase 02-alert-system P02]: findLast polyfill (slice().reverse().find()) used for Node 16 / older browser compatibility
+- [Phase 02-alert-system P02]: prescriptions filtered at call site (r.patient_id === selectedPatientId) so AlertSystem never sees stale data
 
 ### Pending Todos
 
@@ -85,6 +89,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T16:45:23.316Z
-Stopped at: Completed 02-alert-system 02-01-PLAN.md
+Last session: 2026-03-06T17:15:00.000Z
+Stopped at: Completed 02-alert-system 02-02-PLAN.md
 Resume file: None
