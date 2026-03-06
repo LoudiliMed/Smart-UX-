@@ -17,13 +17,15 @@ if (typeof global.ReadableStream === "undefined") {
   global.ReadableStream = NodeReadableStream;
 }
 
-// Mock the SmartUX_AI_Bots module — ChatPanel stub returns null (will be
-// replaced by the real component in Plan 03-02). buildDossierContext is a
-// jest.fn() returning a mock dossier string.
-jest.mock("../SmartUX_AI_Bots", () => ({
-  ChatPanel: jest.fn(() => null),
-  buildDossierContext: jest.fn(() => "Dossier patient mock"),
-}));
+// Plan 03-02: Use real ChatPanel component.
+// buildDossierContext is mocked so tests don't depend on DB_PATIENTS data.
+jest.mock("../SmartUX_AI_Bots", () => {
+  const real = jest.requireActual("../SmartUX_AI_Bots");
+  return {
+    ...real,
+    buildDossierContext: jest.fn(() => "Dossier patient mock"),
+  };
+});
 
 import { ChatPanel, buildDossierContext } from "../SmartUX_AI_Bots";
 

@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, useMemo } from "react";
+import { useState, useReducer, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   DB_PATIENTS,
   DB_STAFF,
@@ -482,6 +482,218 @@ export function AlertSystem({ patient, currentDraft, prescriptions }) {
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CHAT PANEL (CHAT-01, CHAT-02, UX-01)
+// ─────────────────────────────────────────────────────────────────────────────
+const chatInitialState = { messages: [], streamingText: "", isLoading: false };
+
+function chatReducer(state, action) {
+  switch (action.type) {
+    case "SEND":
+      return { ...state, messages: [...state.messages, { role: "user", text: action.text }], isLoading: true, streamingText: "" };
+    case "TOKEN":
+      return { ...state, streamingText: state.streamingText + action.token };
+    case "DONE":
+      return {
+        ...state,
+        messages: [...state.messages, { role: "assistant", text: state.streamingText }],
+        streamingText: "",
+        isLoading: false,
+      };
+    case "ERROR":
+      return { ...state, isLoading: false, streamingText: "" };
+    case "RESET":
+      return chatInitialState;
+    default:
+      return state;
+  }
+}
+
+export function ChatPanel({ patient, selectedPatientId, onClose, chatOpen }) {
+  const [state, dispatch] = useReducer(chatReducer, chatInitialState);
+  const [input, setInput] = useState("");
+  const bottomRef = useRef(null);
+
+  // CHAT-02: reset messages on patient switch
+  useEffect(() => { dispatch({ type: "RESET" }); }, [selectedPatientId]);
+
+  // Auto-scroll to bottom when messages or streaming text changes
+  useEffect(() => {
+    if (bottomRef.current && typeof bottomRef.current.scrollIntoView === "function") {
+      bottomRef.current.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [state.messages, state.streamingText]);
+
+  const sendMessage = useCallback(async (text) => {
+    if (!text.trim() || !patient || state.isLoading) return;
+    dispatch({ type: "SEND", text });
+    setInput("");
+
+    const dossier = buildDossierContext(patient, []);
+    const systemPrompt = `${CLAUDE_SYSTEM_PROMPT_CHAT}\n\n=== DOSSIER PATIENT ===\n${dossier}`;
+
+    const historyMessages = state.messages.map(m => ({
+      role: m.role === "user" ? "user" : "assistant",
+      content: m.text,
+    }));
+
+    try {
+      const res = await fetch("http://localhost:3001/api/claude-stream", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: systemPrompt },
+            ...historyMessages,
+            { role: "user", content: text },
+          ],
+        }),
+      });
+
+      if (!res.ok) { dispatch({ type: "ERROR" }); return; }
+
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let lineBuffer = "";
+
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        lineBuffer += decoder.decode(value, { stream: true });
+        const lines = lineBuffer.split("\n");
+        lineBuffer = lines.pop(); // Retain incomplete trailing line
+        for (const line of lines) {
+          if (!line.startsWith("data: ")) continue;
+          const payload = line.slice(6).trim();
+          if (payload === "[DONE]") { dispatch({ type: "DONE" }); return; }
+          if (payload.startsWith("[ERROR]")) { dispatch({ type: "ERROR" }); return; }
+          dispatch({ type: "TOKEN", token: payload });
+        }
+      }
+      dispatch({ type: "DONE" });
+    } catch (e) {
+      dispatch({ type: "ERROR" });
+    }
+  }, [patient, state.messages, state.isLoading]);
+
+  // UX-01: when chatOpen prop is passed (used by tests), wrap in fixed drawer
+  if (chatOpen !== undefined) {
+    return (
+      <div
+        data-testid="chat-drawer"
+        style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          width: 380,
+          height: "100vh",
+          background: CARD,
+          borderLeft: `1px solid ${BORDER}`,
+          boxShadow: "-4px 0 24px rgba(0,0,0,.12)",
+          display: "flex",
+          flexDirection: "column",
+          zIndex: 200,
+          animation: "slideInRight .22s ease both",
+        }}
+      >
+        <ChatPanelInner patient={patient} state={state} input={input} setInput={setInput} bottomRef={bottomRef} sendMessage={sendMessage} onClose={onClose} />
+      </div>
+    );
+  }
+
+  return (
+    <ChatPanelInner patient={patient} state={state} input={input} setInput={setInput} bottomRef={bottomRef} sendMessage={sendMessage} onClose={onClose} />
+  );
+}
+
+function ChatPanelInner({ patient, state, input, setInput, bottomRef, sendMessage, onClose }) {
+  // Guard state: no patient selected
+  if (!patient) {
+    return (
+      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+        <div style={{ flex: 1, display: "grid", placeItems: "center", color: MUTED, fontSize: 13 }}>
+          Aucun patient sélectionné
+        </div>
+        <form onSubmit={e => e.preventDefault()} style={{ padding: "12px 18px", borderTop: `1px solid ${BORDER}`, display: "flex", gap: 8, flexShrink: 0 }}>
+          <input
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            placeholder="Question clinique..."
+            disabled
+            style={{ flex: 1, padding: "9px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
+          />
+          <button
+            type="submit"
+            disabled
+            style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: ACCENT, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", opacity: 0.5 }}
+          >
+            Envoyer
+          </button>
+        </form>
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+      {/* Header */}
+      <div style={{ padding: "14px 18px", borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+        <span style={{ fontWeight: 700, fontSize: 14, color: ACCENT }}>Chat clinique</span>
+        <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, lineHeight: 1, padding: "0 4px" }} title="Fermer">✕</button>
+      </div>
+
+      {/* Patient identity bar */}
+      <div style={{ padding: "8px 18px", background: "#EEF4F9", borderBottom: `1px solid ${BORDER}`, fontSize: 12, color: ACCENT, fontWeight: 600, flexShrink: 0 }}>
+        {patient.prenom} {patient.nom} — {patient.patient_id}
+      </div>
+
+      {/* Message list */}
+      <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
+        {state.messages.map((m, i) => (
+          <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%" }}>
+            <div style={{
+              background: m.role === "user" ? ACCENT : "#F0F4F8",
+              color: m.role === "user" ? "#fff" : "#1A1A2E",
+              borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
+              padding: "10px 14px", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap",
+            }}>
+              {m.text}
+            </div>
+          </div>
+        ))}
+        {/* Streaming bubble */}
+        {state.streamingText && (
+          <div style={{ alignSelf: "flex-start", maxWidth: "88%" }}>
+            <div style={{ background: "#F0F4F8", color: "#1A1A2E", borderRadius: "14px 14px 14px 4px", padding: "10px 14px", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap" }}>
+              {state.streamingText}
+              <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: "50%", background: ACCENT, marginLeft: 4, animation: "voicePulse 1s infinite" }} />
+            </div>
+          </div>
+        )}
+        <div ref={bottomRef} />
+      </div>
+
+      {/* Input form */}
+      <form onSubmit={e => { e.preventDefault(); sendMessage(input); }} style={{ padding: "12px 18px", borderTop: `1px solid ${BORDER}`, display: "flex", gap: 8, flexShrink: 0 }}>
+        <input
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          placeholder="Question clinique..."
+          disabled={state.isLoading}
+          style={{ flex: 1, padding: "9px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
+        />
+        <button
+          type="submit"
+          disabled={!patient || !input.trim() || state.isLoading}
+          style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: ACCENT, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", opacity: (!patient || !input.trim() || state.isLoading) ? 0.5 : 1 }}
+        >
+          Envoyer
+        </button>
+      </form>
     </div>
   );
 }
