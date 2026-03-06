@@ -1792,6 +1792,13 @@ function NLPBot({ onPrescription, onPatientResolved, patient = null, prescriptio
         <div ref={bottomRef} />
       </div>
 
+      {/* AlertSystem — fires when patient + draft are set */}
+      <AlertSystem
+        patient={patient}
+        currentDraft={history.findLast ? history.findLast(m => m.role === 'bot')?.rx || null : (history.slice().reverse().find(m => m.role === 'bot')?.rx || null)}
+        prescriptions={prescriptions}
+      />
+
       {/* Input bar with autocomplete */}
       <div style={{
         display:"flex", gap:8, alignItems:"flex-start",
