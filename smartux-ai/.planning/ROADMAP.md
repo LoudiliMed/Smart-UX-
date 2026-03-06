@@ -41,11 +41,11 @@ Plans:
   2. Every alert displays the full patient name and ID so there is no ambiguity about which patient the warning applies to
   3. A MODERE or FAIBLE alert can be dismissed with a single click and disappears without requiring any justification from the doctor
   4. A CRITIQUE alert requires explicit acknowledgment before it can be cleared
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 02-01: Build `AlertSystem` component with debounced draft watcher, severity-tiered badge display, and dismiss/acknowledge logic
-- [ ] 02-02: Wire `selectedPatientId` to root state and connect `AlertSystem` inside `NLPBot`
+- [ ] 02-01-PLAN.md — Fix proxy system prompt forwarding, build `parseAlertResponse`, `AlertBanner`, `AlertSystem` with 12-test TDD suite (ALRT-01, ALRT-02, ALRT-03, UX-02)
+- [ ] 02-02-PLAN.md — Wire `selectedPatientId` to root state, connect `AlertSystem` inside `NLPBot` with patient/prescriptions props, human verify (ALRT-01, ALRT-02, ALRT-03, UX-02)
 
 ### Phase 3: Chat Panel
 **Goal**: A doctor can open a chat drawer, ask free-form clinical questions about the selected patient, receive streaming AI answers, and have the conversation clear automatically when they switch patients
