@@ -518,6 +518,7 @@ export function ChatPanel({ patient, selectedPatientId, onClose, chatOpen }) {
   const [input, setInput] = useState("");
   const bottomRef = useRef(null);
 
+
   // CHAT-02: reset messages on patient switch
   useEffect(() => { dispatch({ type: "RESET" }); }, [selectedPatientId]);
 
