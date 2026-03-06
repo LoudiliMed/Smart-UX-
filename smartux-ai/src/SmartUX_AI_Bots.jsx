@@ -1512,6 +1512,7 @@ export default function SmartUXBots() {
   const [prescriptions, setPrescriptions] = useState([]);
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const selectedPatient = DB_PATIENTS.find(p => p.patient_id === selectedPatientId) || null;
+  const [chatOpen, setChatOpen] = useState(false);
 
   useEffect(() => {
     fetch("http://localhost:3001/api/prescriptions")
@@ -1572,6 +1573,7 @@ export default function SmartUXBots() {
         @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
         @keyframes tabIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
         @keyframes voicePulse{0%,100%{opacity:1;box-shadow:0 0 0 0 rgba(239,68,68,.4)}50%{opacity:.7;box-shadow:0 0 0 6px rgba(239,68,68,0)}}
+        @keyframes slideInRight{from{transform:translateX(100%)}to{transform:translateX(0)}}
         .tab-content{animation:tabIn .22s ease both}
         .rx-card{transition:box-shadow .2s,transform .15s}
         .rx-card:hover{box-shadow:0 6px 28px rgba(15,76,117,.10);transform:translateY(-1px)}
@@ -1647,6 +1649,18 @@ export default function SmartUXBots() {
             <div style={{ width:1, height:24, background:"rgba(255,255,255,.12)" }} />
             <LiveClock />
             <div style={{ width:1, height:24, background:"rgba(255,255,255,.12)", marginLeft:8 }} />
+            {/* Chat toggle button — UX-01 */}
+            <button
+              onClick={() => setChatOpen(o => !o)}
+              style={{
+                padding: "6px 12px", borderRadius: 8, border: "none",
+                background: chatOpen ? ACCENT2 : "rgba(255,255,255,.15)",
+                color: "#fff", cursor: "pointer", fontSize: 12, fontWeight: 600,
+                fontFamily: "'DM Sans', sans-serif", transition: "background .15s",
+              }}
+            >
+              {chatOpen ? "Fermer chat" : "Chat clinique"}
+            </button>
             {/* Logged-in user chip */}
             <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:4 }}>
               <div style={{ display:"flex", alignItems:"center", gap:6, padding:"4px 10px", borderRadius:20, background:"rgba(255,255,255,.12)" }}>
@@ -1754,6 +1768,30 @@ export default function SmartUXBots() {
           </>
         )}
       </main>
+
+      {/* Chat drawer — UX-01: position: fixed so main layout does not reflow */}
+      {chatOpen && (
+        <div style={{
+          position: "fixed",
+          top: 0,
+          right: 0,
+          width: 380,
+          height: "100vh",
+          background: CARD,
+          borderLeft: `1px solid ${BORDER}`,
+          boxShadow: "-4px 0 24px rgba(0,0,0,.12)",
+          display: "flex",
+          flexDirection: "column",
+          zIndex: 300,
+          animation: "slideInRight .22s ease both",
+        }}>
+          <ChatPanel
+            patient={selectedPatient}
+            selectedPatientId={selectedPatientId}
+            onClose={() => setChatOpen(false)}
+          />
+        </div>
+      )}
     </div>
   );
 }
