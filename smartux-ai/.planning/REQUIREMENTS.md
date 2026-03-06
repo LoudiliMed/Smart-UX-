@@ -18,13 +18,13 @@
 
 ### ChatPanel
 
-- [ ] **CHAT-01**: Doctor can type free-form clinical questions about the selected patient and receive AI answers
-- [ ] **CHAT-02**: Chat context clears automatically when a different patient is selected
+- [x] **CHAT-01**: Doctor can type free-form clinical questions about the selected patient and receive AI answers
+- [x] **CHAT-02**: Chat context clears automatically when a different patient is selected
 - [x] **CHAT-03**: AI responses stream word-by-word via a new `/api/claude-stream` server-sent events route
 
 ### UX
 
-- [ ] **UX-01**: Chat panel opens and closes as a dismissible drawer that does not cover the prescription form
+- [x] **UX-01**: Chat panel opens and closes as a dismissible drawer that does not cover the prescription form
 - [x] **UX-02**: Alert severity is visually distinct: Red for CRITIQUE, Orange for MODERE, Grey for FAIBLE
 
 ## v2 Requirements
@@ -68,10 +68,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ALRT-02 | Phase 2 | Complete |
 | ALRT-03 | Phase 2 | Complete |
 | UX-02 | Phase 2 | Complete |
-| CHAT-01 | Phase 3 | Pending |
-| CHAT-02 | Phase 3 | Pending |
+| CHAT-01 | Phase 3 | Complete |
+| CHAT-02 | Phase 3 | Complete |
 | CHAT-03 | Phase 3 | Complete |
-| UX-01 | Phase 3 | Pending |
+| UX-01 | Phase 3 | Complete |
 
 **Coverage:**
 - v1 requirements: 10 total

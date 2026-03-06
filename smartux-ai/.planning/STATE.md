@@ -3,14 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: completed
-stopped_at: Completed 03-chat-panel 03-01-PLAN.md
-last_updated: "2026-03-06T17:51:56.439Z"
-last_activity: 2026-03-06 — Phase 2 both plans executed (02-01 AlertSystem components, 02-02 wiring)
+stopped_at: Completed 03-chat-panel 03-02-PLAN.md — Phase 3 and project milestone v1.0 complete
+last_updated: "2026-03-06T19:51:50.831Z"
+last_activity: 2026-03-06 — Phase 3 plan 01 executed (SSE route + Wave 0 test scaffold)
 progress:
   total_phases: 3
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 6
-  completed_plans: 5
+  completed_plans: 6
+  percent: 83
 ---
 
 # Project State
@@ -54,6 +55,7 @@ Progress: [████████░░] 83% (5/6 plans across all phases)
 | Phase 02-alert-system P01 | 3 min | 2 tasks | 3 files |
 | Phase 02-alert-system P02 | 20 min | 3 tasks | 1 file |
 | Phase 03-chat-panel P01 | 8 | 2 tasks | 2 files |
+| Phase 03-chat-panel P03-02 | 35 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -78,6 +80,9 @@ Recent decisions affecting current work:
 - [Phase 02-alert-system P02]: prescriptions filtered at call site (r.patient_id === selectedPatientId) so AlertSystem never sees stale data
 - [Phase 03-chat-panel]: Line accumulation buffer guards against TCP chunk boundary splits in SSE streaming
 - [Phase 03-chat-panel]: temperature: 0.3 for chat route vs 0.1 for NLP route — routes intentionally differ
+- [Phase 03-chat-panel]: ChatPanel useEffect keyed on selectedPatientId (not patient object) to avoid object-identity instability
+- [Phase 03-chat-panel]: Position:fixed drawer after </main> ensures prescription form layout is never reflowed (UX-01)
+- [Phase 03-chat-panel]: SSE line-accumulation buffer guards against TCP chunk boundary splits in ReadableStream reads
 
 ### Pending Todos
 
@@ -91,6 +96,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T17:51:56.437Z
-Stopped at: Completed 03-chat-panel 03-01-PLAN.md
+Last session: 2026-03-06T19:51:50.828Z
+Stopped at: Completed 03-chat-panel 03-02-PLAN.md — Phase 3 and project milestone v1.0 complete
 Resume file: None
