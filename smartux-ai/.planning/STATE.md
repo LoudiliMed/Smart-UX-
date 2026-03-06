@@ -2,16 +2,15 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: in-progress
-stopped_at: Completed 02-alert-system 02-02-PLAN.md
-last_updated: "2026-03-06T17:15:00.000Z"
-last_activity: 2026-03-06 — Phase 2 plan 02-02 complete (AlertSystem wiring + human verification)
+status: completed
+stopped_at: Completed 03-chat-panel 03-01-PLAN.md
+last_updated: "2026-03-06T17:51:56.439Z"
+last_activity: 2026-03-06 — Phase 2 both plans executed (02-01 AlertSystem components, 02-02 wiring)
 progress:
   total_phases: 3
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 100
+  completed_phases: 2
+  total_plans: 6
+  completed_plans: 5
 ---
 
 # Project State
@@ -21,16 +20,16 @@ progress:
 See: .planning/PROJECT.md (updated 2026-03-05)
 
 **Core value:** The doctor never unknowingly prescribes something that could harm the patient — every prescription is checked against the patient's full dossier in real time
-**Current focus:** Phase 2 complete — AlertSystem built, wired, and human-verified end-to-end
+**Current focus:** Phase 3 in progress — SSE streaming route added, ChatPanel test scaffold (RED) created
 
 ## Current Position
 
-Phase: 2 of 3 (Alert System) — COMPLETE
-Plan: 2 of 2 in current phase — COMPLETE
-Status: Phase 2 done, ready for Phase 3
-Last activity: 2026-03-06 — Phase 2 both plans executed (02-01 AlertSystem components, 02-02 wiring)
+Phase: 3 of 3 (Chat Panel) — IN PROGRESS
+Plan: 1 of 2 in current phase — COMPLETE
+Status: 03-01 done (SSE route + test scaffold), ready for 03-02 (ChatPanel component)
+Last activity: 2026-03-06 — Phase 3 plan 01 executed (SSE route + Wave 0 test scaffold)
 
-Progress: [██████████████] Phase 2 complete (4/4 plans across phases 1-2)
+Progress: [████████░░] 83% (5/6 plans across all phases)
 
 ## Performance Metrics
 
@@ -54,6 +53,7 @@ Progress: [██████████████] Phase 2 complete (4/4 pla
 | Phase 01-safety-foundation P02 | 2 min | 2 tasks | 2 files |
 | Phase 02-alert-system P01 | 3 min | 2 tasks | 3 files |
 | Phase 02-alert-system P02 | 20 min | 3 tasks | 1 file |
+| Phase 03-chat-panel P01 | 8 | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -76,6 +76,8 @@ Recent decisions affecting current work:
 - [Phase 02-alert-system P02]: AlertSystem placed inside NLPBot return — keeps alert context co-located with NLP interaction that triggered it
 - [Phase 02-alert-system P02]: findLast polyfill (slice().reverse().find()) used for Node 16 / older browser compatibility
 - [Phase 02-alert-system P02]: prescriptions filtered at call site (r.patient_id === selectedPatientId) so AlertSystem never sees stale data
+- [Phase 03-chat-panel]: Line accumulation buffer guards against TCP chunk boundary splits in SSE streaming
+- [Phase 03-chat-panel]: temperature: 0.3 for chat route vs 0.1 for NLP route — routes intentionally differ
 
 ### Pending Todos
 
@@ -89,6 +91,6 @@ None yet.
 
 ## Session Continuity
 
-Last session: 2026-03-06T17:15:00.000Z
-Stopped at: Completed 02-alert-system 02-02-PLAN.md
+Last session: 2026-03-06T17:51:56.437Z
+Stopped at: Completed 03-chat-panel 03-01-PLAN.md
 Resume file: None

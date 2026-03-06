@@ -20,7 +20,7 @@
 
 - [ ] **CHAT-01**: Doctor can type free-form clinical questions about the selected patient and receive AI answers
 - [ ] **CHAT-02**: Chat context clears automatically when a different patient is selected
-- [ ] **CHAT-03**: AI responses stream word-by-word via a new `/api/claude-stream` server-sent events route
+- [x] **CHAT-03**: AI responses stream word-by-word via a new `/api/claude-stream` server-sent events route
 
 ### UX
 
@@ -70,7 +70,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | UX-02 | Phase 2 | Complete |
 | CHAT-01 | Phase 3 | Pending |
 | CHAT-02 | Phase 3 | Pending |
-| CHAT-03 | Phase 3 | Pending |
+| CHAT-03 | Phase 3 | Complete |
 | UX-01 | Phase 3 | Pending |
 
 **Coverage:**
