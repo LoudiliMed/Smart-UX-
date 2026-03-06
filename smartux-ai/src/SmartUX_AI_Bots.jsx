@@ -530,12 +530,14 @@ export function ChatPanel({ patient, selectedPatientId, onClose, chatOpen }) {
   }, [state.messages, state.streamingText]);
 
   const sendMessage = useCallback(async (text) => {
-    if (!text.trim() || !patient || state.isLoading) return;
+    if (!text.trim() || state.isLoading) return;
     dispatch({ type: "SEND", text });
     setInput("");
 
-    const dossier = buildDossierContext(patient, []);
-    const systemPrompt = `${CLAUDE_SYSTEM_PROMPT_CHAT}\n\n=== DOSSIER PATIENT ===\n${dossier}`;
+    const dossier = patient ? buildDossierContext(patient, []) : null;
+    const systemPrompt = dossier
+      ? `${CLAUDE_SYSTEM_PROMPT_CHAT}\n\n=== DOSSIER PATIENT ===\n${dossier}`
+      : `Tu es un assistant médical clinique dans un hôpital français.\n\nRÈGLES IMPÉRATIVES :\n1. Réponds EXCLUSIVEMENT en français\n2. Indique clairement quand tu n'es pas certain\n3. Chaque réponse DOIT commencer par : "Analyse assistée par IA — vérification clinique recommandée."\n4. Ne fais JAMAIS de diagnostic — propose des hypothèses à vérifier par le clinicien`;
 
     const historyMessages = state.messages.map(m => ({
       role: m.role === "user" ? "user" : "assistant",
@@ -612,33 +614,6 @@ export function ChatPanel({ patient, selectedPatientId, onClose, chatOpen }) {
 }
 
 function ChatPanelInner({ patient, state, input, setInput, bottomRef, sendMessage, onClose }) {
-  // Guard state: no patient selected
-  if (!patient) {
-    return (
-      <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
-        <div style={{ flex: 1, display: "grid", placeItems: "center", color: MUTED, fontSize: 13 }}>
-          Aucun patient sélectionné
-        </div>
-        <form onSubmit={e => e.preventDefault()} style={{ padding: "12px 18px", borderTop: `1px solid ${BORDER}`, display: "flex", gap: 8, flexShrink: 0 }}>
-          <input
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            placeholder="Question clinique..."
-            disabled
-            style={{ flex: 1, padding: "9px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
-          />
-          <button
-            type="submit"
-            disabled
-            style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: ACCENT, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", opacity: 0.5 }}
-          >
-            Envoyer
-          </button>
-        </form>
-      </div>
-    );
-  }
-
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Header */}
@@ -647,10 +622,12 @@ function ChatPanelInner({ patient, state, input, setInput, bottomRef, sendMessag
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, lineHeight: 1, padding: "0 4px" }} title="Fermer">✕</button>
       </div>
 
-      {/* Patient identity bar */}
-      <div style={{ padding: "8px 18px", background: "#EEF4F9", borderBottom: `1px solid ${BORDER}`, fontSize: 12, color: ACCENT, fontWeight: 600, flexShrink: 0 }}>
-        {patient.prenom} {patient.nom} — {patient.patient_id}
-      </div>
+      {/* Patient identity bar — only when a patient is selected */}
+      {patient && (
+        <div style={{ padding: "8px 18px", background: "#EEF4F9", borderBottom: `1px solid ${BORDER}`, fontSize: 12, color: ACCENT, fontWeight: 600, flexShrink: 0 }}>
+          {patient.prenom} {patient.nom} — {patient.patient_id}
+        </div>
+      )}
 
       {/* Message list */}
       <div style={{ flex: 1, overflowY: "auto", padding: "16px 18px", display: "flex", flexDirection: "column", gap: 12 }}>
@@ -683,14 +660,14 @@ function ChatPanelInner({ patient, state, input, setInput, bottomRef, sendMessag
         <input
           value={input}
           onChange={e => setInput(e.target.value)}
-          placeholder="Question clinique..."
+          placeholder={patient ? "Question clinique..." : "Question générale ou clinique..."}
           disabled={state.isLoading}
           style={{ flex: 1, padding: "9px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
         />
         <button
           type="submit"
-          disabled={!patient || !input.trim() || state.isLoading}
-          style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: ACCENT, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", opacity: (!patient || !input.trim() || state.isLoading) ? 0.5 : 1 }}
+          disabled={!input.trim() || state.isLoading}
+          style={{ padding: "9px 16px", borderRadius: 8, border: "none", background: ACCENT, color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer", fontFamily: "'DM Sans', sans-serif", opacity: (!input.trim() || state.isLoading) ? 0.5 : 1 }}
         >
           Envoyer
         </button>

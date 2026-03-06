@@ -97,15 +97,14 @@ describe("CHAT-01: send message and stream response", () => {
 });
 
 // ─── Test C (CHAT-01): Guard state — no patient ───────────────────────────────
-// Renders ChatPanel with patient=null, asserts "Aucun patient sélectionné" is
-// visible and the submit button is disabled.
-// FAILS: ChatPanel stub returns null — nothing renders.
-describe("CHAT-01: guard state — no patient selected", () => {
-  test("shows placeholder and disables input when patient is null", () => {
+// Renders ChatPanel with patient=null, asserts general chatbot mode:
+// input is enabled and no patient identity bar is shown.
+describe("CHAT-01: general chatbot — no patient selected", () => {
+  test("shows general placeholder and enables input when patient is null", () => {
     render(<ChatPanel patient={null} selectedPatientId={null} />);
-    expect(screen.getByText(/Aucun patient sélectionné/i)).toBeInTheDocument();
-    const submitBtn = screen.getByRole("button", { name: /envoyer|send/i });
-    expect(submitBtn).toBeDisabled();
+    expect(screen.queryByText(/Aucun patient sélectionné/i)).not.toBeInTheDocument();
+    const input = screen.getByPlaceholderText(/Question générale ou clinique/i);
+    expect(input).not.toBeDisabled();
   });
 });
 
