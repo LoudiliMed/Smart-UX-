@@ -120,4 +120,62 @@ app.post("/api/claude", async (req, res) => {
   }
 });
 
+// Route Groq SSE streaming (CHAT-03)
+app.post("/api/claude-stream", async (req, res) => {
+  res.setHeader("Content-Type", "text/event-stream");
+  res.setHeader("Cache-Control", "no-cache");
+  res.setHeader("Connection", "keep-alive");
+  res.flushHeaders(); // Send headers immediately — without this Express buffers and stream appears non-streaming
+
+  const { messages, max_tokens = 1000 } = req.body;
+  let buffer = "";
+
+  try {
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        messages,
+        max_tokens,
+        temperature: 0.3,
+        stream: true,
+      }),
+    });
+
+    const reader = groqRes.body.getReader();
+    const decoder = new TextDecoder();
+
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split("\n");
+      buffer = lines.pop(); // Retain incomplete trailing line (Pitfall 4 mitigation)
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const payload = line.slice(6).trim();
+        if (payload === "[DONE]") {
+          res.write("data: [DONE]\n\n");
+          res.end();
+          return;
+        }
+        try {
+          const json = JSON.parse(payload);
+          const token = json.choices?.[0]?.delta?.content;
+          if (token) res.write(`data: ${token}\n\n`);
+        } catch (_) { /* skip partial/malformed lines */ }
+      }
+    }
+    res.write("data: [DONE]\n\n");
+    res.end();
+  } catch (e) {
+    res.write(`data: [ERROR] ${e.message}\n\n`);
+    res.end();
+  }
+});
+
 app.listen(3001, () => console.log("✅ Serveur SILLAGE sur http://localhost:3001"));
