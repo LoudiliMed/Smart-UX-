@@ -56,11 +56,11 @@ Plans:
   2. The doctor can type a clinical question about the selected patient, submit it, and receive an AI response that streams in word-by-word rather than appearing all at once
   3. When the doctor selects a different patient, all previous chat messages disappear and the conversation starts fresh for the new patient
   4. If no patient is selected, the chat panel shows a guard state ("Aucun patient sélectionné") and does not allow questions to be sent
-**Plans**: TBD
+**Plans**: 2 plans
 
 Plans:
-- [ ] 03-01: Build `/api/claude-stream` SSE route on the Express server using Groq SDK streaming
-- [ ] 03-02: Build `ChatPanel` component with `useReducer` state, streaming consumption, auto-scroll, patient-switch reset, and drawer open/close UX
+- [ ] 03-01-PLAN.md — Wave 0 test scaffold + `/api/claude-stream` SSE route on the Express server (CHAT-03)
+- [ ] 03-02-PLAN.md — `ChatPanel` component with `useReducer` state, streaming consumption, auto-scroll, patient-switch reset, and `position: fixed` drawer UX wired into `SmartUXBots` (CHAT-01, CHAT-02, UX-01)
 
 ## Progress
 
