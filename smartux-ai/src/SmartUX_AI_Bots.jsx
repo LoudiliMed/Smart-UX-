@@ -245,6 +245,90 @@ export function buildDossierContext(patient, prescriptions) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  SYSTEM PROMPTS (SAFE-02 — disclaimer mandated in both prompts)
+// ─────────────────────────────────────────────────────────────────────────────
+export const CLAUDE_SYSTEM_PROMPT_ALERT = `Tu es un assistant de vérification des prescriptions médicales dans un hôpital français.
+
+Tu analyses le dossier patient et les prescriptions pour identifier :
+- Conflits d'allergies (CRITIQUE)
+- Interactions médicamenteuses graves (CRITIQUE/MODERE)
+- Contre-indications (CRITIQUE/MODERE)
+- Ajustements posologiques nécessaires (MODERE/FAIBLE)
+
+RÈGLES IMPÉRATIVES :
+1. Réponds EXCLUSIVEMENT en français
+2. Classe chaque alerte : CRITIQUE / MODERE / FAIBLE
+3. Supprime les alertes si le risque est théorique ou négligeable
+4. Exprime l'incertitude avec "Peut-être" si le signal est faible
+5. Chaque réponse DOIT commencer par : "Analyse assistée par IA — vérification clinique recommandée."
+
+FORMAT DE RÉPONSE :
+Analyse assistée par IA — vérification clinique recommandée.
+
+[S'il y a des alertes :]
+**CRITIQUE** : [description du risque + mécanisme + alternative suggérée]
+**MODERE** : [description du risque + recommandation]
+**FAIBLE** : [information utile sans urgence]
+
+[S'il n'y a pas d'alerte :]
+Aucune interaction identifiée dans les données disponibles — le jugement clinique du prescripteur reste requis.`;
+
+export const CLAUDE_SYSTEM_PROMPT_CHAT = `Tu es un assistant médical clinique dans un hôpital français.
+
+Tu réponds aux questions du personnel médical sur les patients.
+
+RÈGLES IMPÉRATIVES :
+1. Réponds EXCLUSIVEMENT en français
+2. Base tes réponses sur le dossier patient fourni dans le contexte
+3. Indique clairement quand tu n'es pas certain
+4. Chaque réponse DOIT commencer par : "Analyse assistée par IA — vérification clinique recommandée."
+5. Ne fais JAMAIS de diagnostic — propose des hypothèses à vérifier par le clinicien
+6. Ne réponds qu'aux questions concernant le patient fourni dans le dossier`;
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  CLAUDE CHAT WRAPPER (SAFE-02)
+// ─────────────────────────────────────────────────────────────────────────────
+const DISCLAIMER = "Analyse assistée par IA — vérification clinique recommandée";
+
+export async function callClaudeChat(systemPrompt, userMessage, history = []) {
+  try {
+    const messages = [
+      { role: "system", content: systemPrompt },
+      ...history,
+      { role: "user", content: userMessage },
+    ];
+
+    const res = await fetch("http://localhost:3001/api/claude", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: "claude-sonnet-4-5",
+        max_tokens: 2000,
+        messages,
+      }),
+    });
+
+    if (!res.ok) {
+      throw new Error(`Claude API error: ${res.status}`);
+    }
+
+    const data = await res.json();
+    const text = data.content?.[0]?.text || "";
+
+    // SAFE-02: Dual-layer disclaimer enforcement.
+    // Layer 1: system prompt instructs Claude to begin with disclaimer.
+    // Layer 2 (this): if Claude omits it (model drift), prepend here as failsafe.
+    if (!text.includes(DISCLAIMER)) {
+      return `${DISCLAIMER}\n\n${text}`;
+    }
+    return text;
+  } catch (error) {
+    console.error("callClaudeChat error:", error);
+    throw error; // Let Phase 2 / Phase 3 caller handle error state
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  EXPORT PDF (via jsPDF CDN)
 // ─────────────────────────────────────────────────────────────────────────────
 function exportPDF(rx) {
