@@ -12,7 +12,7 @@ Three phases build the clinical chatbot from its foundation up. Phase 1 construc
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 1: Safety Foundation** - Build the patient dossier context builder and Claude wrapper that power all safety checks
+- [x] **Phase 1: Safety Foundation** - Build the patient dossier context builder and Claude wrapper that power all safety checks
 - [ ] **Phase 2: Alert System** - Add proactive drug safety alerts that fire when a prescription draft changes
 - [ ] **Phase 3: Chat Panel** - Add the dismissible free-form clinical Q&A drawer with streaming responses
 
@@ -29,8 +29,8 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01-PLAN.md — Implement `buildDossierContext(patient, prescriptions)` with test scaffold (SAFE-01)
-- [ ] 01-02-PLAN.md — Implement `callClaudeChat()` with dual-layer disclaimer and French system prompts (SAFE-02)
+- [x] 01-01-PLAN.md — Implement `buildDossierContext(patient, prescriptions)` with test scaffold (SAFE-01)
+- [x] 01-02-PLAN.md — Implement `callClaudeChat()` with dual-layer disclaimer and French system prompts (SAFE-02)
 
 ### Phase 2: Alert System
 **Goal**: A doctor entering a drug into the prescription form sees proactive safety alerts — severity-tiered, patient-identified, dismissible — without being blocked from prescribing
@@ -69,6 +69,6 @@ Phases execute in numeric order: 1 → 2 → 3
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Safety Foundation | 1/2 | In Progress|  |
+| 1. Safety Foundation | 2/2 | Complete | 2026-03-06 |
 | 2. Alert System | 0/2 | Not started | - |
 | 3. Chat Panel | 0/2 | Not started | - |
