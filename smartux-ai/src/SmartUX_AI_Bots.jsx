@@ -182,6 +182,69 @@ Phrase : "${text}"`,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  PATIENT DOSSIER CONTEXT BUILDER (SAFE-01)
+// ─────────────────────────────────────────────────────────────────────────────
+// PHI NOTE: Patient name replaced with token (H-{id}) per RGPD — confirmed in
+// Task 0 checkpoint (option-b). DPA not yet confirmed for this hospital.
+// To restore full name once DPA is signed, replace the header line with:
+//   `Patient : ${patient.first_name} ${patient.last_name} (${patient.ipp}), ${age} ans, ${patient.ward}, chambre ${patient.room}`
+export function buildDossierContext(patient, prescriptions) {
+  if (!patient) return null;
+
+  // Age computation (existing pattern from DossierPanel)
+  const age =
+    new Date().getFullYear() - new Date(patient.date_of_birth).getFullYear();
+
+  // Header — anonymized token (H-{id}) instead of full name per RGPD / DPA-pending
+  const header = `Patient H-${patient.patient_id}, ${age} ans, ${patient.ward}, chambre ${patient.room}`;
+
+  // Vitals: most recent entry only (LOCKED DECISION)
+  const vitals = DB_CONSTANTES
+    .filter((c) => c.patient_id === patient.patient_id)
+    .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+  const vitalsStr = vitals
+    ? `Constantes (le ${new Date(vitals.date).toLocaleDateString("fr-FR")}) : TA ${vitals.ta}, FC ${vitals.fc}/min, Température ${vitals.temp}°C, SpO2 ${vitals.spo2}%, Poids ${vitals.poids}kg`
+    : "Constantes : Non disponibles";
+
+  // Clinical note: most recent entry only (LOCKED DECISION)
+  const note = DB_OBSERVATIONS
+    .filter((o) => o.patient_id === patient.patient_id)
+    .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+
+  const noteStr = note
+    ? `Dernière note clinique (${new Date(note.date).toLocaleDateString("fr-FR")} — ${note.category}) : ${note.text}`
+    : "Aucune note clinique récente";
+
+  // Allergies inline (LOCKED DECISION)
+  const allergies = KNOWN_ALLERGIES[patient.patient_id] || [];
+  const allergiesStr =
+    allergies.length > 0
+      ? `Allergies connues : ${allergies.join(", ")}`
+      : "Aucune allergie connue";
+
+  // Current medications (LOCKED DECISION: passed by caller, full history)
+  const medsStr =
+    prescriptions && prescriptions.length > 0
+      ? "Traitements en cours : " +
+        prescriptions
+          .map((rx) => {
+            const drugName =
+              rx.drug_name_free ||
+              DB_MEDICAMENTS.find((m) => m.id === rx.medicament_id)?.brand ||
+              "Médicament inconnu";
+            return [drugName, rx.dosage, rx.route]
+              .filter(Boolean)
+              .join(" ");
+          })
+          .join("; ")
+      : "Aucun traitement en cours";
+
+  // Assemble as narrative prose (LOCKED DECISION: not JSON, not labeled sections)
+  return `${header}\n\n${vitalsStr}\n\n${noteStr}\n\n${allergiesStr}\n\n${medsStr}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  EXPORT PDF (via jsPDF CDN)
 // ─────────────────────────────────────────────────────────────────────────────
 function exportPDF(rx) {
@@ -509,6 +572,7 @@ function DossierPanel({ prescriptions }) {
         const age = new Date().getFullYear() - new Date(p.date_of_birth).getFullYear();
         const urgentRx = rxList.filter(r => r.priorite === "URGENTE" || r.priorite === "STAT");
         const isOpen = !!expanded[p.patient_id];
+        
 
         return (
           <div key={p.patient_id} style={{
@@ -996,7 +1060,8 @@ export default function SmartUXBots() {
   useEffect(() => {
     fetch("http://localhost:3001/api/prescriptions")
       .then(r => r.json())
-      .then(data => setPrescriptions(data));
+      .then(data => setPrescriptions(data))
+      .catch(() => {});
   }, []);
 
   const addPrescription = useCallback((rx) => {
