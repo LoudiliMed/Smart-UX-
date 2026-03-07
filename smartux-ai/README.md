@@ -123,10 +123,10 @@ L'application est protégée par authentification avant tout accès.
 
 | Sous-onglet | Description |
 |-------------|-------------|
-| **Dossier** | 6 patients avec actes & ordres, allergies, priorités |
-| **Observations** | Notes cliniques + constantes vitales par patient |
-| **Imagerie** | Examens d'imagerie avec filtre par statut |
-| **Paramètres** | Profil utilisateur, permissions accordées, configuration système |
+| **Dossier** | 6 patients avec actes & ordres, allergies, priorités — affichage pleine largeur (sans sidebar NLP) |
+| **Observations** | Notes cliniques + constantes vitales par patient — affichage pleine largeur |
+| **Imagerie** | Examens d'imagerie avec filtre par statut — affichage pleine largeur |
+| **Paramètres** | Profil utilisateur, permissions accordées, préférences d'affichage |
 
 ---
 
@@ -138,6 +138,8 @@ Bouton flottant dans la barre de navigation → tiroir latéral droit.
 - Contexte complet de tous les patients injecté dans le system prompt
 - Si un patient est sélectionné, le focus est mis sur ce patient
 - Réinitialisation automatique de l'historique au changement de patient
+- Indicateur de chargement (3 points animés) pendant la réponse IA
+- Message d'erreur bulle rouge si le serveur est injoignable
 
 ### Réponses adaptées au rôle
 
@@ -157,6 +159,17 @@ Le serveur envoie des tokens bruts `data: <token>\n\n`. Ne pas appliquer `.trim(
 ### Dictée vocale
 
 Le bouton microphone dans le chat déclenche `SpeechRecognition` (fr-FR). A la fin de la dictée, le transcript est **envoyé automatiquement** sans clic supplémentaire.
+
+---
+
+## Préférences d'affichage (Paramètres)
+
+Configurées dans l'onglet **Paramètres**, persistées dans `localStorage` et restaurées au rechargement.
+
+| Préférence | Options | Effet |
+|------------|---------|-------|
+| Taille de texte | S / M / L | Appliqué à `document.body.style.fontSize` en temps réel |
+| Densité | Compact / Normal | Modifie le padding du `<main>` (Compact : `16px 24px 60px`, Normal : `32px 24px 80px`) |
 
 ---
 
