@@ -1,3 +1,6 @@
+// ─────────────────────────────────────────────────────────────────────────────
+//  IMPORTS & THEME CONSTANTS
+// ─────────────────────────────────────────────────────────────────────────────
 import { useState, useReducer, useRef, useCallback, useEffect, useMemo } from "react";
 import {
   DB_PATIENTS,
@@ -23,6 +26,9 @@ const AMBER   = "#F59E0B";
 const RED     = "#EF4444";
 const BORDER  = "#E2E8F0";
 
+// ─────────────────────────────────────────────────────────────────────────────
+//  UTILITY FUNCTIONS
+// ─────────────────────────────────────────────────────────────────────────────
 function autoCorrect(text) {
   let corrected = text;
   const corrections = [];
@@ -144,7 +150,7 @@ function parseDelay(str) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CLAUDE API CALL
+//  AI API CALL  (NLP parsing — non-streaming)
 // ─────────────────────────────────────────────────────────────────────────────
 async function parseWithClaude(text) {
   try {
@@ -245,9 +251,38 @@ export function buildDossierContext(patient, prescriptions) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+//  ALL-PATIENTS CONTEXT BUILDER
+// ─────────────────────────────────────────────────────────────────────────────
+export function buildAllPatientsContext(allPrescriptions = []) {
+  return DB_PATIENTS.map(p => {
+    const age = new Date().getFullYear() - new Date(p.date_of_birth).getFullYear();
+    const vitals = DB_CONSTANTES
+      .filter(c => c.patient_id === p.patient_id)
+      .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    const note = DB_OBSERVATIONS
+      .filter(o => o.patient_id === p.patient_id)
+      .sort((a, b) => new Date(b.date) - new Date(a.date))[0];
+    const allergies = KNOWN_ALLERGIES[p.patient_id] || [];
+    const rxs = allPrescriptions.filter(rx => rx.patient_id === p.patient_id);
+    const imgs = DB_IMAGERIE.filter(i => i.patient_id === p.patient_id);
+
+    let lines = [];
+    lines.push(`## Patient H-${p.patient_id}`);
+    lines.push(`${age} ans — ${p.gender === "M" ? "Homme" : "Femme"} — Groupe ${p.blood_type} — ${p.ward}, chambre ${p.room}`);
+    if (vitals) lines.push(`Constantes (${new Date(vitals.date).toLocaleDateString("fr-FR")}): TA ${vitals.ta}, FC ${vitals.fc}/min, T° ${vitals.temp}°C, SpO2 ${vitals.spo2}%, Poids ${vitals.poids}kg`);
+    lines.push(allergies.length > 0 ? `Allergies: ${allergies.join(", ")}` : "Allergies: aucune connue");
+    if (note) lines.push(`Dernière note (${new Date(note.date).toLocaleDateString("fr-FR")} — ${note.category} par ${note.author}): ${note.text}`);
+    if (imgs.length > 0) lines.push(`Imagerie: ${imgs.map(i => `${i.type} [${i.status}] — ${i.description}`).join(" | ")}`);
+    if (rxs.length > 0) lines.push(`Prescriptions: ${rxs.map(rx => [rx.drug_name_free, rx.dosage, rx.route].filter(Boolean).join(" ")).join("; ")}`);
+    else lines.push("Prescriptions: aucune enregistrée");
+    return lines.join("\n");
+  }).join("\n\n");
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 //  SYSTEM PROMPTS (SAFE-02 — disclaimer mandated in both prompts)
 // ─────────────────────────────────────────────────────────────────────────────
-export const CLAUDE_SYSTEM_PROMPT_ALERT = `Tu es un assistant de vérification des prescriptions médicales dans un hôpital français.
+export const SYSTEM_PROMPT_ALERT = `Tu es un assistant de vérification des prescriptions médicales dans un hôpital français.
 
 Tu analyses le dossier patient et les prescriptions pour identifier :
 - Conflits d'allergies (CRITIQUE)
@@ -273,7 +308,7 @@ Analyse assistée par IA — vérification clinique recommandée.
 [S'il n'y a pas d'alerte :]
 Aucune interaction identifiée dans les données disponibles — le jugement clinique du prescripteur reste requis.`;
 
-export const CLAUDE_SYSTEM_PROMPT_CHAT = `Tu es un assistant médical clinique dans un hôpital français.
+export const SYSTEM_PROMPT_CHAT = `Tu es un assistant médical clinique dans un hôpital français.
 
 Tu réponds aux questions du personnel médical sur les patients.
 
@@ -281,16 +316,42 @@ RÈGLES IMPÉRATIVES :
 1. Réponds EXCLUSIVEMENT en français
 2. Base tes réponses sur le dossier patient fourni dans le contexte
 3. Indique clairement quand tu n'es pas certain
-4. Chaque réponse DOIT commencer par : "Analyse assistée par IA — vérification clinique recommandée."
-5. Ne fais JAMAIS de diagnostic — propose des hypothèses à vérifier par le clinicien
-6. Ne réponds qu'aux questions concernant le patient fourni dans le dossier`;
+4. Ne fais JAMAIS de diagnostic — propose uniquement des hypothèses à vérifier par le clinicien
+5. Ne réponds qu'aux questions concernant les données fournies dans le contexte
+6. Ne cite JAMAIS le nom d'un patient — réfère-toi uniquement à son identifiant (ex : H-12345)
+7. Adapte le niveau de détail et le vocabulaire au rôle du professionnel indiqué dans le profil utilisateur`;
 
 // ─────────────────────────────────────────────────────────────────────────────
-//  CLAUDE CHAT WRAPPER (SAFE-02)
+//  ROLE-AWARE SYSTEM PROMPT BUILDER
+// ─────────────────────────────────────────────────────────────────────────────
+function buildChatSystemPrompt(user) {
+  const level = user?.access_level ?? 1;
+  const role  = user?.role_label   ?? "Personnel";
+
+  let roleInstructions;
+  if (level >= 4) {
+    roleInstructions =
+      `Tu t'adresses à un(e) ${role}. Fournis un niveau de détail clinique complet : hypothèses diagnostiques, traitements, interactions médicamenteuses, résultats biologiques et d'imagerie, pronostic. Utilise la terminologie médicale appropriée.`;
+  } else if (level === 3) {
+    roleInstructions =
+      `Tu t'adresses à un(e) ${role}. Fournis les informations cliniques opérationnelles : médicaments, posologies, protocoles de soins, constantes, surveillance. Ne formule pas d'hypothèse diagnostique.`;
+  } else if (level === 2) {
+    roleInstructions =
+      `Tu t'adresses à un(e) ${role}. Fournis uniquement les informations de soin de base : état général, instructions de soins immédiates. Omets les diagnostics, les ordonnances détaillées et les résultats biologiques.`;
+  } else {
+    roleInstructions =
+      `Tu t'adresses à un(e) ${role}. Fournis uniquement les informations administratives : service, numéro de chambre, rendez-vous. N'accède à aucune donnée clinique.`;
+  }
+
+  return `${SYSTEM_PROMPT_CHAT}\n\n=== PROFIL UTILISATEUR ===\nRôle : ${role} (niveau d'accès ${level})\n${roleInstructions}`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+//  AI CHAT WRAPPER  (non-streaming, used by alert system — SAFE-02)
 // ─────────────────────────────────────────────────────────────────────────────
 const DISCLAIMER = "Analyse assistée par IA — vérification clinique recommandée";
 
-export async function callClaudeChat(systemPrompt, userMessage, history = []) {
+export async function callAIChat(systemPrompt, userMessage, history = []) {
   try {
     const messages = [
       { role: "system", content: systemPrompt },
@@ -309,21 +370,21 @@ export async function callClaudeChat(systemPrompt, userMessage, history = []) {
     });
 
     if (!res.ok) {
-      throw new Error(`Claude API error: ${res.status}`);
+      throw new Error(`AI API error: ${res.status}`);
     }
 
     const data = await res.json();
     const text = data.content?.[0]?.text || "";
 
     // SAFE-02: Dual-layer disclaimer enforcement.
-    // Layer 1: system prompt instructs Claude to begin with disclaimer.
-    // Layer 2 (this): if Claude omits it (model drift), prepend here as failsafe.
+    // Layer 1: system prompt instructs the AI to begin with the disclaimer.
+    // Layer 2 (this): if the AI omits it (model drift), prepend here as failsafe.
     if (!text.includes(DISCLAIMER)) {
       return `${DISCLAIMER}\n\n${text}`;
     }
     return text;
   } catch (error) {
-    console.error("callClaudeChat error:", error);
+    console.error("callAIChat error:", error);
     throw error; // Let Phase 2 / Phase 3 caller handle error state
   }
 }
@@ -427,9 +488,9 @@ export function AlertSystem({ patient, currentDraft, prescriptions }) {
       setIsChecking(true);
       try {
         const dossier = buildDossierContext(patient, prescriptions || []);
-        const systemWithDossier = `${CLAUDE_SYSTEM_PROMPT_ALERT}\n\n=== DOSSIER PATIENT ===\n${dossier}`;
+        const systemWithDossier = `${SYSTEM_PROMPT_ALERT}\n\n=== DOSSIER PATIENT ===\n${dossier}`;
         const userMessage = `Médicament proposé : ${currentDraft.drug_name_free}${currentDraft.dosage ? ` — Dose : ${currentDraft.dosage}` : ''}${currentDraft.route ? ` — Voie : ${currentDraft.route}` : ''}`;
-        const raw = await callClaudeChat(systemWithDossier, userMessage);
+        const raw = await callAIChat(systemWithDossier, userMessage);
         if (reqId !== requestIdRef.current) return;
         setAlerts(parseAlertResponse(raw));
       } catch (_err) {
@@ -505,7 +566,12 @@ function chatReducer(state, action) {
         isLoading: false,
       };
     case "ERROR":
-      return { ...state, isLoading: false, streamingText: "" };
+      return {
+        ...state,
+        messages: [...state.messages, { role: "assistant", text: "Impossible de contacter le serveur. Vérifiez que le serveur est bien démarré (`node server.js`).", isError: true }],
+        streamingText: "",
+        isLoading: false,
+      };
     case "RESET":
       return chatInitialState;
     default:
@@ -513,7 +579,7 @@ function chatReducer(state, action) {
   }
 }
 
-export function ChatPanel({ patient, selectedPatientId, onClose, chatOpen }) {
+export function ChatPanel({ patient, selectedPatientId, prescriptions = [], onClose, chatOpen, user }) {
   const [state, dispatch] = useReducer(chatReducer, chatInitialState);
   const [input, setInput] = useState("");
   const bottomRef = useRef(null);
@@ -534,10 +600,11 @@ export function ChatPanel({ patient, selectedPatientId, onClose, chatOpen }) {
     dispatch({ type: "SEND", text });
     setInput("");
 
-    const dossier = patient ? buildDossierContext(patient, []) : null;
-    const systemPrompt = dossier
-      ? `${CLAUDE_SYSTEM_PROMPT_CHAT}\n\n=== DOSSIER PATIENT ===\n${dossier}`
-      : `Tu es un assistant médical clinique dans un hôpital français.\n\nRÈGLES IMPÉRATIVES :\n1. Réponds EXCLUSIVEMENT en français\n2. Indique clairement quand tu n'es pas certain\n3. Chaque réponse DOIT commencer par : "Analyse assistée par IA — vérification clinique recommandée."\n4. Ne fais JAMAIS de diagnostic — propose des hypothèses à vérifier par le clinicien`;
+    const allPatientsCtx = buildAllPatientsContext(prescriptions);
+    const focusLine = patient
+      ? `Le personnel a actuellement sélectionné le patient : H-${patient.patient_id}.`
+      : "Aucun patient sélectionné — réponds aux questions sur n'importe quel patient de la base.";
+    const systemPrompt = `${buildChatSystemPrompt(user)}\n\n=== BASE DE DONNÉES PATIENTS ===\n${allPatientsCtx}\n\n${focusLine}`;
 
     const historyMessages = state.messages.map(m => ({
       role: m.role === "user" ? "user" : "assistant",
@@ -571,9 +638,9 @@ export function ChatPanel({ patient, selectedPatientId, onClose, chatOpen }) {
         lineBuffer = lines.pop(); // Retain incomplete trailing line
         for (const line of lines) {
           if (!line.startsWith("data: ")) continue;
-          const payload = line.slice(6).trim();
-          if (payload === "[DONE]") { dispatch({ type: "DONE" }); return; }
-          if (payload.startsWith("[ERROR]")) { dispatch({ type: "ERROR" }); return; }
+          const payload = line.slice(6);
+          if (payload.trim() === "[DONE]") { dispatch({ type: "DONE" }); return; }
+          if (payload.trim().startsWith("[ERROR]")) { dispatch({ type: "ERROR" }); return; }
           dispatch({ type: "TOKEN", token: payload });
         }
       }
@@ -581,7 +648,7 @@ export function ChatPanel({ patient, selectedPatientId, onClose, chatOpen }) {
     } catch (e) {
       dispatch({ type: "ERROR" });
     }
-  }, [patient, state.messages, state.isLoading]);
+  }, [patient, prescriptions, user, state.messages, state.isLoading]);
 
   // UX-01: when chatOpen prop is passed (used by tests), wrap in fixed drawer
   if (chatOpen !== undefined) {
@@ -614,18 +681,43 @@ export function ChatPanel({ patient, selectedPatientId, onClose, chatOpen }) {
 }
 
 function ChatPanelInner({ patient, state, input, setInput, bottomRef, sendMessage, onClose }) {
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef(null);
+  const hasSpeech = !!(window.SpeechRecognition || window.webkitSpeechRecognition);
+
+  const sendRef = useRef(sendMessage);
+  useEffect(() => { sendRef.current = sendMessage; }, [sendMessage]);
+
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
+    const rec = new SpeechRecognition();
+    rec.lang = "fr-FR";
+    rec.continuous = false;
+    rec.interimResults = false;
+    rec.onresult = (e) => { const t = e.results[0][0].transcript; setInput(t); setListening(false); sendRef.current(t); };
+    rec.onend = () => setListening(false);
+    recognitionRef.current = rec;
+  }, [setInput]);
+
+  const toggleVoice = () => {
+    if (!recognitionRef.current) return;
+    if (listening) { recognitionRef.current.stop(); setListening(false); }
+    else           { recognitionRef.current.start(); setListening(true); }
+  };
+
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
       {/* Header */}
       <div style={{ padding: "14px 18px", borderBottom: `1px solid ${BORDER}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <span style={{ fontWeight: 700, fontSize: 14, color: ACCENT }}>Chat clinique</span>
+        <span style={{ fontWeight: 700, fontSize: 14, color: ACCENT }}>Doctor AI</span>
         <button onClick={onClose} style={{ background: "none", border: "none", cursor: "pointer", color: MUTED, fontSize: 18, lineHeight: 1, padding: "0 4px" }} title="Fermer">✕</button>
       </div>
 
       {/* Patient identity bar — only when a patient is selected */}
       {patient && (
         <div style={{ padding: "8px 18px", background: "#EEF4F9", borderBottom: `1px solid ${BORDER}`, fontSize: 12, color: ACCENT, fontWeight: 600, flexShrink: 0 }}>
-          {patient.prenom} {patient.nom} — {patient.patient_id}
+          {patient.first_name} {patient.last_name}
         </div>
       )}
 
@@ -634,10 +726,11 @@ function ChatPanelInner({ patient, state, input, setInput, bottomRef, sendMessag
         {state.messages.map((m, i) => (
           <div key={i} style={{ alignSelf: m.role === "user" ? "flex-end" : "flex-start", maxWidth: "88%" }}>
             <div style={{
-              background: m.role === "user" ? ACCENT : "#F0F4F8",
-              color: m.role === "user" ? "#fff" : "#1A1A2E",
+              background: m.isError ? "#FEF2F2" : m.role === "user" ? ACCENT : "#F0F4F8",
+              color: m.isError ? RED : m.role === "user" ? "#fff" : "#1A1A2E",
               borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
               padding: "10px 14px", fontSize: 13, lineHeight: 1.6, whiteSpace: "pre-wrap",
+              border: m.isError ? `1px solid ${RED}` : "none",
             }}>
               {m.text}
             </div>
@@ -652,6 +745,16 @@ function ChatPanelInner({ patient, state, input, setInput, bottomRef, sendMessag
             </div>
           </div>
         )}
+        {/* Loading indicator */}
+        {state.isLoading && !state.streamingText && (
+          <div style={{ alignSelf: "flex-start" }}>
+            <div style={{ background: "#F0F4F8", borderRadius: "14px 14px 14px 4px", padding: "10px 16px", display: "flex", gap: 5, alignItems: "center" }}>
+              {[0, 1, 2].map(i => (
+                <span key={i} style={{ display: "inline-block", width: 7, height: 7, borderRadius: "50%", background: MUTED, animation: `voicePulse 1.2s ${i * 0.2}s infinite` }} />
+              ))}
+            </div>
+          </div>
+        )}
         <div ref={bottomRef} />
       </div>
 
@@ -662,8 +765,24 @@ function ChatPanelInner({ patient, state, input, setInput, bottomRef, sendMessag
           onChange={e => setInput(e.target.value)}
           placeholder={patient ? "Question clinique..." : "Question générale ou clinique..."}
           disabled={state.isLoading}
-          style={{ flex: 1, padding: "9px 12px", borderRadius: 8, border: `1px solid ${BORDER}`, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none" }}
+          style={{ flex: 1, padding: "9px 12px", borderRadius: 8, border: `1px solid ${listening ? RED : BORDER}`, fontSize: 13, fontFamily: "'DM Sans', sans-serif", outline: "none", transition: "border-color .2s" }}
         />
+        {hasSpeech && (
+          <button type="button" onClick={toggleVoice} title={listening ? "Arrêter la dictée" : "Dicter"} style={{
+            width: 38, height: 38, borderRadius: 8, border: "none", flexShrink: 0,
+            background: listening ? RED : ACCENT + "15",
+            color: listening ? "#fff" : ACCENT,
+            cursor: "pointer", display: "grid", placeItems: "center",
+            animation: listening ? "voicePulse 1s infinite" : "none",
+          }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+        )}
         <button
           type="submit"
           disabled={!input.trim() || state.isLoading}
@@ -937,10 +1056,8 @@ function AutocompleteInput({ value, onChange, onSubmit, loading, placeholder }) 
   );
 }
 
-// (Logo removed per user request)
-
 // ─────────────────────────────────────────────────────────────────────────────
-//  ICONS (professional 2D SVG — no emojis)
+//  ICONS  (professional 2D SVG — no emojis)
 // ─────────────────────────────────────────────────────────────────────────────
 const Icon = ({ type, size = 15, color = "currentColor" }) => {
   const props = { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: color, strokeWidth: "2", strokeLinecap: "round", strokeLinejoin: "round" };
@@ -1113,7 +1230,7 @@ function DossierPanel({ prescriptions }) {
                               <div style={{ fontSize:11, color:MUTED }}>Indication : {rx.indication}</div>
                             )}
                             {rx.allergyAlert && (
-                              <div style={{ fontSize:11, fontWeight:700, color:RED, marginTop:3 }}>⚠ {rx.allergyAlert}</div>
+                              <div style={{ fontSize:11, fontWeight:700, color:RED, marginTop:3 }}>Allergie : {rx.allergyAlert}</div>
                             )}
                           </div>
                           <div style={{ display:"flex", flexDirection:"column", alignItems:"flex-end", gap:4, flexShrink:0 }}>
@@ -1217,7 +1334,7 @@ function ImageriePanel() {
                     </div>
                     <p style={{ fontSize:12, color:MUTED, margin:0, lineHeight:1.5 }}>{e.description}</p>
                     <div style={{ fontSize:11, color: e.reader ? ACCENT : MUTED, fontWeight: e.reader ? 600 : 400, marginTop:2 }}>
-                      {e.reader ? `🔬 ${e.reader}` : "En attente de lecture"}
+                      {e.reader ? e.reader : "En attente de lecture"}
                     </div>
                   </div>
                 );
@@ -1341,10 +1458,7 @@ function ObservationsPanel() {
 // ─────────────────────────────────────────────────────────────────────────────
 //  PARAMETRES PANEL
 // ─────────────────────────────────────────────────────────────────────────────
-function ParametresPanel({ user }) {
-  const [fontSize, setFontSize] = useState(14);
-  const [density, setDensity]   = useState("Normal");
-
+function ParametresPanel({ user, fontSize, setFontSize, density, setDensity }) {
   if (!user) return null;
 
   const perms = ACCESS_PERMISSIONS[user.access_level] || [];
@@ -1436,7 +1550,7 @@ function ParametresPanel({ user }) {
           </div>
         </div>
         <div style={{ marginTop:14, fontSize:11, color:MUTED, fontStyle:"italic" }}>
-          Les préférences sont réinitialisées à la déconnexion.
+          Les préférences sont sauvegardées automatiquement dans le navigateur.
         </div>
       </div>
 
@@ -1468,7 +1582,7 @@ function ParametresPanel({ user }) {
 //  TABS
 // ─────────────────────────────────────────────────────────────────────────────
 const tabs = [
-  { id:"nlp", label:"NLP Contextuel", iconType:"chat" },
+  { id:"nlp", label:"Write out", iconType:"chat" },
   { id:"rx",  label:"Actes & Ordres", iconType:"file" },
 ];
 
@@ -1491,6 +1605,24 @@ export default function SmartUXBots() {
   const [selectedPatientId, setSelectedPatientId] = useState(null);
   const selectedPatient = DB_PATIENTS.find(p => p.patient_id === selectedPatientId) || null;
   const [chatOpen, setChatOpen] = useState(false);
+
+  // Display preferences — persisted to localStorage
+  const [fontSize, setFontSizeState] = useState(() => parseInt(localStorage.getItem("pref_fontSize") || "14"));
+  const [density, setDensityState]   = useState(() => localStorage.getItem("pref_density") || "Normal");
+
+  const setFontSize = useCallback((val) => {
+    setFontSizeState(val);
+    localStorage.setItem("pref_fontSize", val);
+    document.body.style.fontSize = val + "px";
+  }, []);
+
+  const setDensity = useCallback((val) => {
+    setDensityState(val);
+    localStorage.setItem("pref_density", val);
+  }, []);
+
+  // Apply persisted font size on mount
+  useEffect(() => { document.body.style.fontSize = fontSize + "px"; }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     fetch("http://localhost:3001/api/prescriptions")
@@ -1637,7 +1769,7 @@ export default function SmartUXBots() {
                 fontFamily: "'DM Sans', sans-serif", transition: "background .15s",
               }}
             >
-              {chatOpen ? "Fermer chat" : "Chat clinique"}
+              {chatOpen ? "Fermer Doctor AI" : "Doctor AI"}
             </button>
             {/* Logged-in user chip */}
             <div style={{ display:"flex", alignItems:"center", gap:8, marginLeft:4 }}>
@@ -1688,30 +1820,15 @@ export default function SmartUXBots() {
       </header>
 
       {/* ── MAIN ───────────────────────────────────────────────────────────── */}
-      <main style={{ maxWidth:["dossier","observations","imagerie","parametres"].includes(activeSubTab) ? 1380 : 1000, margin:"0 auto", padding:"32px 24px 80px" }}>
+      <main style={{ maxWidth:["dossier","observations","imagerie","parametres"].includes(activeSubTab) ? 1200 : 1000, margin:"0 auto", padding: density === "Compact" ? "16px 24px 60px" : "32px 24px 80px" }}>
 
         {["dossier","observations","imagerie","parametres"].includes(activeSubTab) ? (
-          /* ── Two-column: panel + NLP sidebar ── */
-          <div style={{ display:"flex", gap:20, alignItems:"flex-start" }}>
-
-            {/* Panel */}
-            <div style={{ flex:1, minWidth:0, animation:"tabIn .22s ease both" }}>
-              {activeSubTab === "dossier"      && <DossierPanel prescriptions={prescriptions} />}
-              {activeSubTab === "observations" && <ObservationsPanel />}
-              {activeSubTab === "imagerie"     && <ImageriePanel />}
-              {activeSubTab === "parametres"   && <ParametresPanel user={authenticatedUser} />}
-            </div>
-
-            {/* NLP assistant sidebar */}
-            <div style={{ width:360, flexShrink:0, position:"sticky", top:110 }}>
-              <NLPBot
-                onPrescription={addPrescription}
-                onPatientResolved={setSelectedPatientId}
-                patient={selectedPatient}
-                prescriptions={prescriptions.filter(r => r.patient_id === selectedPatientId)}
-                compact
-              />
-            </div>
+          /* ── Full-width panel (no NLP sidebar) ── */
+          <div style={{ animation:"tabIn .22s ease both" }}>
+            {activeSubTab === "dossier"      && <DossierPanel prescriptions={prescriptions} />}
+            {activeSubTab === "observations" && <ObservationsPanel />}
+            {activeSubTab === "imagerie"     && <ImageriePanel />}
+            {activeSubTab === "parametres"   && <ParametresPanel user={authenticatedUser} fontSize={fontSize} setFontSize={setFontSize} density={density} setDensity={setDensity} />}
           </div>
 
         ) : (
@@ -1766,7 +1883,9 @@ export default function SmartUXBots() {
           <ChatPanel
             patient={selectedPatient}
             selectedPatientId={selectedPatientId}
+            prescriptions={prescriptions}
             onClose={() => setChatOpen(false)}
+            user={authenticatedUser}
           />
         </div>
       )}
