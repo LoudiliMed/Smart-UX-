@@ -133,10 +133,11 @@ function mapNLPToPrescription(nlpData, rawText) {
 
 // ─────────────────────────────────────────────────────────────────────────────
 //  PARSE DELAY  — converts "2h", "24h", "3 jours", "30min" → ISO timestamp
+//                or "aucun"/"immédiat"/synonymes → "immediate"
 // ─────────────────────────────────────────────────────────────────────────────
 function parseDelay(str) {
   if (!str) return null;
-  if (/^(aucun|non|sans|no|-)$/i.test(str.trim())) return null;
+  if (/^(aucun|non|sans|no|-|immédiat|immediat|maintenant|now|direct|dès que possible|dqp|tout de suite|asap)$/i.test(str.trim())) return "immediate";
   const match = str.match(/(\d+)\s*(h(?:eure(?:s)?)?|j(?:our(?:s)?)?|min(?:ute(?:s)?)?|sem(?:aine(?:s)?)?)/i);
   if (!match) return null;
   const val  = parseInt(match[1]);
@@ -147,6 +148,20 @@ function parseDelay(str) {
   else if (unit.startsWith("min")) d.setMinutes(d.getMinutes() + val);
   else if (unit.startsWith("sem")) d.setDate(d.getDate() + val * 7);
   return d.toISOString();
+}
+
+// Extrait un entier positif d'une réponse libre ("3", "2 fois", "14 jours"…)
+function parsePositiveInt(str) {
+  const match = str.match(/(\d+)/);
+  return match ? parseInt(match[1]) : null;
+}
+
+// Convertit une durée en nombre de jours ("7 jours" → 7, "2 semaines" → 14)
+function parseNbJours(str) {
+  const weekMatch = str.match(/(\d+)\s*sem/i);
+  if (weekMatch) return parseInt(weekMatch[1]) * 7;
+  const match = str.match(/(\d+)/);
+  return match ? parseInt(match[1]) : null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -179,6 +194,9 @@ Phrase : "${text}"`,
       }),
     });
     const data = await res.json();
+    if (!res.ok) {
+      return { erreur: data.error || `Serveur ${res.status}` };
+    }
     const raw = data.content?.[0]?.text || "{}";
     const clean = raw.replace(/```json|```/g, "").trim();
     return JSON.parse(clean);
@@ -1917,23 +1935,56 @@ function NLPBot({ onPrescription, onPatientResolved, patient = null, prescriptio
   const send = useCallback(async (text) => {
     if (!text.trim()) return;
 
-    // ── Handle delay answer ──────────────────────────────────────────────────
+    // ── Handle multi-step questions (délai → fois/jour → nb jours) ───────────
     if (pendingDelay) {
       const userText = text.trim();
       setHistory(h => [...h, { role:"user", text:userText }]);
       setInput("");
-      const echeance = parseDelay(userText);
-      const updatedRx = { ...pendingDelay.rx, echeance };
-      // Update the last bot message's rx with the echeance
-      setHistory(h => h.map((m, i) =>
-        (m.role === "bot" && i === h.length - 2) ? { ...m, rx: updatedRx } : m
-      ));
-      const delayLabel = echeance
-        ? `Délai enregistré : ${userText} — échéance le ${new Date(echeance).toLocaleString("fr-FR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" })}`
-        : "Aucun délai défini pour cet acte.";
-      setHistory(h => [...h, { role:"bot-info", text:delayLabel, rx:updatedRx }]);
-      setPendingDelay(null);
-      return;
+
+      // Étape 1 : délai
+      if (pendingDelay.step === "delay") {
+        const echeance = parseDelay(userText);
+        if (!echeance) {
+          setHistory(h => [...h, { role:"bot-question", text:"Délai non reconnu. Indiquez un délai valide (ex : 2h, 24h, 3 jours) ou « aucun » pour une administration immédiate." }]);
+          return;
+        }
+        setPendingDelay({ ...pendingDelay, step: "fois_par_jour", echeance });
+        setHistory(h => [...h, { role:"bot-question", text:"Combien de fois par jour ? (ex : 1, 2, 3)" }]);
+        return;
+      }
+
+      // Étape 2 : fréquence par jour
+      if (pendingDelay.step === "fois_par_jour") {
+        const foisParJour = parsePositiveInt(userText);
+        if (!foisParJour) {
+          setHistory(h => [...h, { role:"bot-question", text:"Valeur non reconnue. Indiquez un nombre entier (ex : 1, 2, 3)." }]);
+          return;
+        }
+        setPendingDelay({ ...pendingDelay, step: "nb_jours", foisParJour });
+        setHistory(h => [...h, { role:"bot-question", text:"Pour combien de jours ? (ex : 5, 7, 2 semaines)" }]);
+        return;
+      }
+
+      // Étape 3 : durée en jours → finalisation
+      if (pendingDelay.step === "nb_jours") {
+        const nbJours = parseNbJours(userText);
+        if (!nbJours) {
+          setHistory(h => [...h, { role:"bot-question", text:"Valeur non reconnue. Indiquez un nombre de jours (ex : 5, 7) ou de semaines (ex : 2 semaines)." }]);
+          return;
+        }
+        const { rx, echeance, foisParJour } = pendingDelay;
+        const echeanceLabel = echeance === "immediate"
+          ? "Immédiat"
+          : new Date(echeance).toLocaleString("fr-FR", { day:"2-digit", month:"2-digit", hour:"2-digit", minute:"2-digit" });
+        const updatedRx = { ...rx, echeance: echeance === "immediate" ? null : echeance, fois_par_jour: foisParJour, nb_jours: nbJours };
+        setHistory(h => h.map((m, i) =>
+          (m.role === "bot" && i === h.length - 2) ? { ...m, rx: updatedRx } : m
+        ));
+        const summary = `Délai : ${echeanceLabel} — ${foisParJour}x/jour — ${nbJours} jour${nbJours > 1 ? "s" : ""}`;
+        setHistory(h => [...h, { role:"bot-info", text:summary, rx:updatedRx }]);
+        setPendingDelay(null);
+        return;
+      }
     }
 
     // ── Normal NLP flow ──────────────────────────────────────────────────────
@@ -1945,14 +1996,19 @@ function NLPBot({ onPrescription, onPatientResolved, patient = null, prescriptio
     setInput("");
     setLoading(true);
     const structured = await parseWithClaude(corrected);
+    if (structured.erreur) {
+      setHistory(h => [...h, { role:"bot-error", text:`Erreur serveur IA : ${structured.erreur}. Vérifiez que le serveur tourne (node server.js) et que la clé Groq est valide.` }]);
+      setLoading(false);
+      return;
+    }
     const rx = mapNLPToPrescription(structured, corrected);
     setHistory(h => [...h, { role:"bot", text:structured, rx }]);
     if (rx._matched_patient && onPatientResolved) {
       onPatientResolved(rx._matched_patient.patient_id);
     }
-    // Ask for delay
-    setHistory(h => [...h, { role:"bot-question", text:"Quel est le délai imparti pour cet acte ? (ex : 2h, 24h, 3 jours, ou « aucun »)" }]);
-    setPendingDelay({ rx });
+    // Étape 1 : délai
+    setHistory(h => [...h, { role:"bot-question", text:"Quel est le délai imparti pour cet acte ? (ex : 2h, 24h, 3 jours, aucun)" }]);
+    setPendingDelay({ rx, step: "delay" });
     setLoading(false);
   }, [pendingDelay, onPatientResolved]);
 
@@ -2026,6 +2082,11 @@ function NLPBot({ onPrescription, onPatientResolved, patient = null, prescriptio
                 Corrigé : {m.corrections.map(c => `"${c.from}" → "${c.to}"`).join(", ")}
               </div>
             )}
+          </div>
+        ) : m.role === "bot-error" ? (
+          /* ── Erreur serveur IA ── */
+          <div key={i} style={{ alignSelf:"flex-start", background:RED+"10", border:`1.5px solid ${RED}44`, borderRadius:"14px 14px 14px 4px", padding:"12px 18px", maxWidth:"85%", fontSize:13, color:RED }}>
+            <span style={{ fontWeight:700, marginRight:8 }}>Erreur</span>{m.text}
           </div>
         ) : m.role === "bot-question" ? (
           /* ── Question délai ── */
