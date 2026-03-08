@@ -1,3 +1,4 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const Database = require("better-sqlite3");
@@ -95,7 +96,7 @@ app.patch("/api/prescriptions/:id", (req, res) => {
 });
 
 // Route Groq NLP
-const GROQ_API_KEY = "REDACTED_GROQ_API_KEY";
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
 
 app.post("/api/claude", async (req, res) => {
   try {
@@ -114,6 +115,10 @@ app.post("/api/claude", async (req, res) => {
       }),
     });
     const data = await response.json();
+    if (!response.ok || !data.choices?.[0]) {
+      const msg = data.error?.message || `Groq HTTP ${response.status}`;
+      return res.status(502).json({ error: msg });
+    }
     res.json({ content: [{ text: data.choices[0].message.content }] });
   } catch (e) {
     res.status(500).json({ error: e.message });
@@ -178,4 +183,4 @@ app.post("/api/claude-stream", async (req, res) => {
   }
 });
 
-app.listen(3001, () => console.log("✅ Serveur SILLAGE sur http://localhost:3001"));
+app.listen(3001, () => console.log("Serveur SILLAGE sur http://localhost:3001"));
