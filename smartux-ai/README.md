@@ -1,24 +1,164 @@
 # SmartUX-AI
 
-Prototype d'interface hospitalière en français pour le projet **SILLAGE** (CRIStAL x Centrale Lille).
+Prototype d'interface hospitalière IA en français pour le projet **SILLAGE** (CRIStAL x Centrale Lille).
+
+L'application permet à un professionnel de santé de :
+- Saisir une prescription en langage naturel (NLP) → structuration automatique par IA
+- Recevoir des alertes en temps réel sur les interactions médicamenteuses et allergies
+- Interroger un chatbot médical contextuel (Doctor AI) sur les dossiers patients
 
 ---
 
-## Lancer le projet
+## Prérequis
 
-Les deux processus doivent tourner en parallèle :
+- [Node.js](https://nodejs.org) v18 ou supérieur
+- Un compte [Groq](https://console.groq.com) (gratuit) pour obtenir une clé API
+
+---
+
+## Installation
+
+### 1. Cloner le dépôt
 
 ```bash
-# Terminal 1 — API Express (port 3001)
+git clone https://github.com/votre-utilisateur/smartux-ai.git
+cd smartux-ai
+```
+
+### 2. Installer les dépendances
+
+```bash
+npm install
+```
+
+### 3. Configurer la clé API
+
+Copier le fichier d'exemple et y renseigner votre clé Groq :
+
+```bash
+cp .env.example .env
+```
+
+Ouvrir `.env` et remplacer la valeur :
+
+```
+GROQ_API_KEY=votre_cle_groq_ici
+```
+
+Pour obtenir une clé : [console.groq.com](https://console.groq.com) → **API Keys** → **Create API Key**.
+
+> Le fichier `.env` est ignoré par git et ne sera jamais publié.
+
+### 4. Lancer l'application
+
+L'application nécessite **deux terminaux en parallèle** :
+
+```bash
+# Terminal 1 — Backend Express (port 3001)
 node server.js
 
 # Terminal 2 — Frontend React (port 3000)
 npm start
 ```
 
-Autres commandes :
+Ouvrir [http://localhost:3000](http://localhost:3000) dans le navigateur.
+
+---
+
+## Connexion
+
+L'application démarre sur un écran d'authentification. Trois méthodes sont disponibles :
+
+| Méthode | Fonctionnement |
+|---------|---------------|
+| Reconnaissance faciale | Simule un scan biométrique (caméra décorative) |
+| Badge RFID | Simule un scan de badge |
+| Mot de passe | Saisie classique |
+
+### Comptes disponibles
+
+| Nom | Mot de passe | Rôle | Niveau d'accès |
+|-----|-------------|------|----------------|
+| Dr Sophie Martin | `sophie2024` | Médecin | 4 — accès clinique complet |
+| Pr Laurent Dubois | `laurent2024` | Médecin | 4 — accès clinique complet |
+| Dr Isabelle Bernard | `isa2024` | Chirurgien | 4 — accès clinique complet |
+| Céline Moreau | `celine2024` | Cadre de Santé | 3 — accès opérationnel |
+| Pierre Simon | `pierre2024` | Infirmier | 3 — accès opérationnel |
+| Nadia Laurent | `nadia2024` | Aide-Soignant | 2 — accès soins de base |
+| Admin | `admin` | Super Administrateur | 5 — tous les droits |
+
+---
+
+## Fonctionnalités
+
+### Write out — Saisie NLP
+
+L'onglet principal permet de saisir une instruction médicale en français libre. L'IA extrait automatiquement les données structurées.
+
+**Exemples de phrases :**
+
+```
+Prescrire 500mg de Doliprane per os toutes les 6h pour le patient Dupont
+Injecter 4000UI de Lovenox en SC pour Morin — indication TVP
+Radiographie thoracique en urgence pour le patient Hakimi chambre 201
+Mme Lefevre signale une allergie à la pénicilline — mettre en dossier urgent
+Transfert du patient Tremblay de cardiologie vers réanimation, priorité haute
+```
+
+Après analyse, le bot pose trois questions obligatoires avant de permettre l'enregistrement :
+
+1. **Délai** — quand administrer l'acte (ex : `2h`, `24h`, `3 jours`, `aucun`)
+2. **Fréquence** — combien de fois par jour (ex : `1`, `2`, `3`)
+3. **Durée** — pour combien de jours (ex : `7`, `14`, `2 semaines`)
+
+Une fois les trois réponses fournies, le bouton **Enregistrer dans SILLAGE** apparaît.
+
+### Système d'alertes
+
+Dès qu'un médicament est saisi pour un patient sélectionné, l'IA vérifie automatiquement :
+- Conflits d'allergies connues
+- Interactions médicamenteuses
+- Contre-indications
+
+Les alertes sont classées **CRITIQUE** / **MODERE** / **FAIBLE**. Les alertes CRITIQUE nécessitent un accusé de réception explicite avant de pouvoir continuer.
+
+### Actes & Ordres
+
+Consultation et gestion de toutes les prescriptions enregistrées en base SQLite. Permet de valider, annuler ou modifier une prescription existante.
+
+### Sous-onglets
+
+| Sous-onglet | Contenu |
+|-------------|---------|
+| **Dossier** | Dossiers de 6 patients — allergies, constantes, observations |
+| **Observations** | Notes cliniques et constantes vitales par patient |
+| **Imagerie** | Examens d'imagerie avec filtre par statut |
+| **Paramètres** | Profil utilisateur, permissions, préférences d'affichage |
+
+### Doctor AI — Chatbot médical
+
+Bouton **Doctor AI** dans la barre de navigation → tiroir latéral droit.
+
+Le chatbot a accès au contexte complet de tous les patients (dossier, constantes, prescriptions enregistrées). Si un patient est sélectionné, le focus est mis sur ce patient.
+
+Le niveau de détail des réponses s'adapte automatiquement au rôle de l'utilisateur connecté :
+
+| Niveau | Rôles | Contenu |
+|--------|-------|---------|
+| 4-5 | Médecin, Chirurgien, Radiologue... | Hypothèses diagnostiques, interactions, pronostic |
+| 3 | Infirmier, Pharmacien, Cadre | Médicaments, posologies, protocoles de soins |
+| 2 | Aide-Soignant, Interne | Etat général, instructions immédiates |
+| 1 | Agent d'Accueil | Chambre, service, rendez-vous uniquement |
+
+Les prescriptions enregistrées via le NLP sont visibles dans le contexte du chatbot.
+
+---
+
+## Commandes utiles
 
 ```bash
+node server.js                                     # Démarrer le backend
+npm start                                          # Démarrer le frontend
 npm run build                                      # Build de production
 npm test                                           # Tests en mode watch
 npm test -- --watchAll=false                       # Tests en mode CI
@@ -30,6 +170,69 @@ npm test -- --testNamePattern="CHAT-01"            # Tests par nom
 
 ## Architecture
 
+### Structure du projet
+
+```
+smartux-ai/
+├── server.js                  # Backend Express — proxy Groq + SQLite REST
+├── sillage.db                 # Base SQLite (créée automatiquement)
+├── .env                       # Clé API Groq (non committé)
+├── .env.example               # Modèle à copier
+├── src/
+│   ├── SmartUX_AI_Bots.jsx    # Composant racine — auth gate + layout + état partagé
+│   ├── database.js            # Données statiques (patients, staff, médicaments…)
+│   ├── App.js                 # Point d'entrée React
+│   │
+│   ├── constants/
+│   │   └── theme.js           # Palette de couleurs partagée (ACCENT, RED, GREEN…)
+│   │
+│   ├── utils/
+│   │   ├── nlp.js             # Fonctions NLP pures et testables (autoCorrect, mapNLPToPrescription…)
+│   │   └── pdf.js             # Export PDF jsPDF (lazy-load depuis CDN)
+│   │
+│   ├── api/
+│   │   └── client.js          # Toutes les requêtes HTTP (fetchPrescriptions, callAIChat…)
+│   │
+│   ├── ai/
+│   │   └── prompts.js         # Prompts système et constructeurs de contexte patient
+│   │
+│   ├── components/
+│   │   ├── ui/                # Atomes réutilisables
+│   │   │   ├── Badge.jsx
+│   │   │   ├── Btn.jsx
+│   │   │   ├── Icon.jsx
+│   │   │   ├── LiveClock.jsx
+│   │   │   └── AutocompleteInput.jsx   # Avec saisie vocale (Web Speech API)
+│   │   │
+│   │   ├── auth/
+│   │   │   └── BioBot.jsx     # Authentification biométrique / RFID / mot de passe
+│   │   │
+│   │   ├── alerts/
+│   │   │   └── AlertSystem.jsx  # Vérification interactions médicamenteuses (debounced IA)
+│   │   │
+│   │   ├── chat/
+│   │   │   └── ChatPanel.jsx  # Tiroir Doctor AI — streaming SSE
+│   │   │
+│   │   ├── nlp/
+│   │   │   └── NLPBot.jsx     # Saisie NLP + dialogue multi-étapes (délai / fréquence / durée)
+│   │   │
+│   │   ├── rx/
+│   │   │   └── RxTab.jsx      # Actes & Ordres — vue Kanban avec sections par urgence
+│   │   │
+│   │   └── panels/
+│   │       ├── DossierPanel.jsx       # Accordéon patients — allergies + prescriptions
+│   │       ├── ImageriePanel.jsx      # Examens d'imagerie filtrables par statut
+│   │       ├── ObservationsPanel.jsx  # Notes cliniques + constantes vitales
+│   │       └── ParametresPanel.jsx    # Profil, permissions, préférences d'affichage
+│   │
+│   └── __tests__/
+│       ├── AlertSystem.test.js
+│       ├── ChatPanel.test.js
+│       ├── buildDossierContext.test.js
+│       └── callClaudeChat.test.js
+└── public/
+```
+
 ### Deux processus requis
 
 | Processus | Port | Rôle |
@@ -37,59 +240,9 @@ npm test -- --testNamePattern="CHAT-01"            # Tests par nom
 | `server.js` (Express) | 3001 | Proxy vers l'API Groq, persistance SQLite |
 | `src/` (React CRA) | 3000 | Interface utilisateur complète |
 
-Malgré les noms de routes `/api/claude`, le backend appelle l'**API Groq** (`api.groq.com`) avec le modèle `llama-3.3-70b-versatile`.
+Les routes `/api/claude` et `/api/claude-stream` appellent l'**API Groq** (`api.groq.com`) avec le modèle `llama-3.3-70b-versatile`.
 
-### Frontend — `src/SmartUX_AI_Bots.jsx`
-
-Fichier unique (~1700 lignes) contenant toute la logique UI, organisé en blocs :
-
-| Bloc | Contenu |
-|------|---------|
-| `IMPORTS & THEME CONSTANTS` | Imports React, palette de couleurs |
-| `UTILITY FUNCTIONS` | `autoCorrect`, `detectAllergyConflict` |
-| `NLP → PRESCRIPTION MAPPER` | `mapNLPToPrescription()` |
-| `PARSE DELAY` | Conversion délais texte vers timestamp |
-| `AI API CALL` | `parseWithClaude()` — NLP non-streaming |
-| `PATIENT DOSSIER CONTEXT BUILDER` | `buildDossierContext()` — SAFE-01 |
-| `ALL-PATIENTS CONTEXT BUILDER` | `buildAllPatientsContext()` |
-| `SYSTEM PROMPTS` | `SYSTEM_PROMPT_ALERT`, `SYSTEM_PROMPT_CHAT` |
-| `ROLE-AWARE SYSTEM PROMPT BUILDER` | `buildChatSystemPrompt(user)` |
-| `AI CHAT WRAPPER` | `callAIChat()` — non-streaming, alertes — SAFE-02 |
-| `ALERT SYSTEM` | `AlertSystem`, `AlertBanner`, `parseAlertResponse()` |
-| `CHAT PANEL` | `ChatPanel`, `ChatPanelInner` — SSE streaming |
-| `EXPORT PDF` | Génération PDF via jsPDF CDN |
-| `SHARED UI ATOMS` | `Badge`, `Btn` |
-| `AUTOCOMPLETE INPUT` | Saisie avec voix, historique, autocomplétion |
-| `ICONS` | SVG inline — pas d'emoji |
-| `LIVE CLOCK` | Horloge temps réel |
-| `DOSSIER PANEL` | Vue patients avec actes & ordres |
-| `IMAGERIE PANEL` | Examens d'imagerie avec filtres |
-| `OBSERVATIONS PANEL` | Notes cliniques + constantes vitales |
-| `PARAMETRES PANEL` | Profil utilisateur, permissions, préférences |
-| `TABS` | Configuration des onglets principaux et secondaires |
-| `ROOT COMPONENT` | `SmartUXBots` — état global, navigation |
-
-### Base de données locale — `src/database.js`
-
-Toutes les données statiques (pas de fetch frontend) :
-
-| Export | Contenu |
-|--------|---------|
-| `DB_PATIENTS` | 6 patients (IPP, nom, naissance, groupe sanguin, chambre, service) |
-| `DB_STAFF` | 16 membres du personnel (rôle, niveau d'accès 1-5, mot de passe, biométrie) |
-| `DB_MEDICAMENTS` | 45 médicaments (DCI, forme, dosage, voie, catégorie) |
-| `DB_OBSERVATIONS` | Notes cliniques par patient |
-| `DB_CONSTANTES` | Constantes vitales par patient |
-| `DB_IMAGERIE` | Examens d'imagerie par patient |
-| `KNOWN_ALLERGIES` | Allergies connues par `patient_id` |
-| `TYPO_CORRECTIONS` | Corrections automatiques de fautes médicales |
-| `AUTOCOMPLETE_CORPUS` | Phrases et termes pour l'autocomplétion |
-| `ACCESS_PERMISSIONS` | Permissions par niveau d'accès (1 à 5) |
-| `PERM_LABELS` | Labels français des permissions |
-
-### Backend — `server.js`
-
-API Express sur `http://localhost:3001`. Base SQLite (`sillage.db`) créée automatiquement.
+### API Backend
 
 | Méthode | Route | Description |
 |---------|-------|-------------|
@@ -97,117 +250,77 @@ API Express sur `http://localhost:3001`. Base SQLite (`sillage.db`) créée auto
 | POST | `/api/prescriptions` | Créer une prescription |
 | PATCH | `/api/prescriptions/:id` | Mettre à jour une prescription |
 | POST | `/api/claude` | Proxy Groq — réponse JSON (NLP + alertes) |
-| POST | `/api/claude-stream` | Proxy Groq — SSE streaming (Doctor AI chat) |
+| POST | `/api/claude-stream` | Proxy Groq — SSE streaming (Doctor AI) |
+
+### Données statiques — `src/database.js`
+
+Toutes les données de démonstration sont des tableaux JavaScript statiques exportés depuis ce seul fichier :
+
+| Export | Contenu |
+|--------|---------|
+| `DB_PATIENTS` | 6 patients (IPP, nom, naissance, groupe sanguin, chambre, service) |
+| `DB_STAFF` | 16 membres du personnel (rôle, niveau d'accès 1-5, mot de passe) |
+| `DB_MEDICAMENTS` | 45 médicaments (DCI, forme, dosage, voie, catégorie) |
+| `DB_OBSERVATIONS` | Notes cliniques par patient |
+| `DB_CONSTANTES` | Constantes vitales par patient |
+| `DB_IMAGERIE` | Examens d'imagerie par patient |
+| `KNOWN_ALLERGIES` | Allergies connues par `patient_id` |
+| `TYPO_CORRECTIONS` | Corrections orthographiques médicales pour `autoCorrect()` |
+| `AUTOCOMPLETE_CORPUS` | Suggestions de saisie pour `AutocompleteInput` |
+| `ACCESS_PERMISSIONS` | Permissions par niveau d'accès (1–5) |
+| `PERM_LABELS` | Labels lisibles des permissions |
+
+### Modules clés pour les contributeurs
+
+| Fichier | Ce qu'il faut savoir |
+|---------|---------------------|
+| `src/api/client.js` | Changer `API_BASE` pour pointer vers un autre serveur |
+| `src/ai/prompts.js` | Modifier les instructions données à l'IA |
+| `src/utils/nlp.js` | Ajouter des médicaments, corriger des règles d'extraction |
+| `src/constants/theme.js` | Changer toute la palette de couleurs en un seul endroit |
+| `src/components/nlp/NLPBot.jsx` | Modifier le dialogue multi-étapes (délai / fréquence / durée) |
 
 ---
 
-## Flux d'authentification
+## Sécurité & contraintes
 
-L'application est protégée par authentification avant tout accès.
-
-- Au lancement : seul l'écran d'authentification est visible
-- Trois méthodes : **Reconnaissance faciale**, **Badge RFID**, **Mot de passe**
-- Après validation : accès complet avec nom, titre et niveau d'accès affichés dans la barre
-- Bouton **x** pour se déconnecter
-
----
-
-## Onglets principaux
-
-| Onglet | Description |
-|--------|-------------|
-| **Write out** | Saisie libre en français → prescription structurée via LLM (Groq) |
-| **Actes & Ordres** | Consultation et gestion des prescriptions en base SQLite |
-
-### Sous-onglets
-
-| Sous-onglet | Description |
-|-------------|-------------|
-| **Dossier** | 6 patients avec actes & ordres, allergies, priorités — affichage pleine largeur (sans sidebar NLP) |
-| **Observations** | Notes cliniques + constantes vitales par patient — affichage pleine largeur |
-| **Imagerie** | Examens d'imagerie avec filtre par statut — affichage pleine largeur |
-| **Paramètres** | Profil utilisateur, permissions accordées, préférences d'affichage |
+- **Disclaimer IA obligatoire** : toute réponse commence par `"Analyse assistée par IA — vérification clinique recommandée"` — double couche système + failsafe dans le code
+- **Anonymisation RGPD** : les patients sont identifiés par `H-{id}` dans les prompts envoyés à l'IA, jamais par leur nom
+- **L'IA ne pose pas de diagnostic** — hypothèses uniquement, à vérifier par le clinicien
+- **Biométrie simulée** — la caméra s'ouvre mais aucun traitement biométrique réel n'est effectué
+- **Prototype de recherche** — non certifié pour usage clinique réel (voir `proposition.md` pour la roadmap de mise en production)
 
 ---
 
-## Doctor AI — Chat panel
+## Dépannage
 
-Bouton flottant dans la barre de navigation → tiroir latéral droit.
+**Le NLP affiche "Erreur serveur IA"**
+- Vérifier que `node server.js` tourne bien (Terminal 1)
+- Vérifier que `GROQ_API_KEY` dans `.env` est valide — tester sur [console.groq.com](https://console.groq.com)
 
-- Streaming SSE via `POST /api/claude-stream`
-- Contexte complet de tous les patients injecté dans le system prompt
-- Si un patient est sélectionné, le focus est mis sur ce patient
-- Réinitialisation automatique de l'historique au changement de patient
-- Indicateur de chargement (3 points animés) pendant la réponse IA
-- Message d'erreur bulle rouge si le serveur est injoignable
+**La page ne s'affiche pas**
+- Vérifier que `npm start` tourne (Terminal 2)
+- Ouvrir [http://localhost:3000](http://localhost:3000)
 
-### Réponses adaptées au rôle
-
-Le contenu des réponses varie selon le niveau d'accès de l'utilisateur connecté :
-
-| Niveau | Rôles | Contenu des réponses |
-|--------|-------|----------------------|
-| 4-5 | Médecin, Chirurgien, Anesthésiste, Biologiste, Radiologue, Sage-Femme | Détail clinique complet : hypothèses diagnostiques, interactions, pronostic |
-| 3 | Infirmier, Cadre de Santé, Pharmacien | Informations opérationnelles : médicaments, posologies, protocoles |
-| 2 | Aide-Soignant, Interne, Secrétaire | Soins de base : état général, instructions immédiates |
-| 1 | Agent d'Accueil | Administratif uniquement : chambre, service, rendez-vous |
-
-### Protocole SSE
-
-Le serveur envoie des tokens bruts `data: <token>\n\n`. Ne pas appliquer `.trim()` sur les tokens — Groq inclut les espaces comme séparateurs de mots. Seules les sentinelles `[DONE]` et `[ERROR]` sont trimmées.
-
-### Dictée vocale
-
-Le bouton microphone dans le chat déclenche `SpeechRecognition` (fr-FR). A la fin de la dictée, le transcript est **envoyé automatiquement** sans clic supplémentaire.
+**Les prescriptions ne persistent pas**
+- `sillage.db` est créé automatiquement au premier démarrage de `node server.js`
+- Ne pas supprimer ce fichier entre les sessions
 
 ---
 
-## Préférences d'affichage (Paramètres)
+## Contribuer
 
-Configurées dans l'onglet **Paramètres**, persistées dans `localStorage` et restaurées au rechargement.
+Le code source est organisé en modules indépendants pour faciliter les contributions :
 
-| Préférence | Options | Effet |
-|------------|---------|-------|
-| Taille de texte | S / M / L | Appliqué à `document.body.style.fontSize` en temps réel |
-| Densité | Compact / Normal | Modifie le padding du `<main>` (Compact : `16px 24px 60px`, Normal : `32px 24px 80px`) |
-
----
-
-## Système d'alertes
-
-Déclenché automatiquement dans l'onglet NLP quand un médicament est saisi pour un patient sélectionné.
-
-- Appel à `callAIChat()` avec `SYSTEM_PROMPT_ALERT` + dossier patient
-- Délai de déclenchement : 1,2 s après la dernière modification (debounce)
-- Alertes classées : **CRITIQUE** / **MODERE** / **FAIBLE**
-- Protection contre les races conditions via `requestIdRef`
-- Les alertes CRITIQUE nécessitent un accusé de réception explicite
+- **Ajouter une fonctionnalité UI** → créer un composant dans `src/components/` et l'importer dans `SmartUX_AI_Bots.jsx`
+- **Modifier les prompts IA** → éditer `src/ai/prompts.js` uniquement
+- **Ajouter un médicament ou un patient de démo** → éditer `src/database.js` uniquement
+- **Changer le modèle LLM** → modifier `model` dans `server.js` (route `/api/claude` et `/api/claude-stream`)
+- **Changer l'URL du backend** → modifier `API_BASE` dans `src/api/client.js`
+- **Écrire un test** → ajouter un fichier `*.test.js` dans `src/__tests__/` (Jest + React Testing Library)
 
 ---
 
-## System prompts
+## Licence
 
-| Constante | Usage |
-|-----------|-------|
-| `SYSTEM_PROMPT_ALERT` | Vérification des prescriptions — alertes allergie/interaction |
-| `SYSTEM_PROMPT_CHAT` | Base du prompt Doctor AI |
-| `buildChatSystemPrompt(user)` | Génère le prompt final avec instructions adaptées au rôle |
-
----
-
-## Contraintes de sécurité (SAFE-02)
-
-- Les réponses d'alerte commencent toujours par `"Analyse assistée par IA — vérification clinique recommandée"` — double couche : instruction système + prepend de secours dans `callAIChat()`
-- Anonymisation PHI : les en-têtes de patients utilisent `H-{patient_id}` au lieu du nom complet (RGPD — confirmation DPA en attente)
-- L'IA ne pose jamais de diagnostic — hypothèses uniquement, à vérifier par le clinicien
-
----
-
-## Contraintes techniques
-
-- **Pas de TypeScript** — JavaScript/JSX uniquement
-- **Pas de gestionnaire d'état externe** — `useState` / `useReducer` / `useCallback` uniquement
-- **Pas de CSS externe** — styles inline uniquement (Google Fonts : DM Sans + Space Mono)
-- **Biométrie simulée** — pas de vraie reconnaissance faciale, le flux caméra est décoratif
-- **Données statiques** — patients, personnel, médicaments hardcodés dans `src/database.js`
-- **Clé API Groq** — hardcodée dans `server.js`, à déplacer dans un fichier `.env`
+Projet de recherche — CRIStAL x Centrale Lille. Usage académique uniquement.
