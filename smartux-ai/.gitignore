@@ -23,3 +23,8 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 .planning/
+
+# Database files (may contain sensitive data)
+*.db
+*.sqlite
+*.sqlite3
