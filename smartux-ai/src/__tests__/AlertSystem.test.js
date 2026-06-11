@@ -140,4 +140,14 @@ describe('AlertSystem', () => {
     const banner = container.querySelector('[data-severity="FAIBLE"]');
     expect(banner).toHaveStyle('border-left: 4px solid #6B7280');
   });
+
+  test('UX-02: CRITIQUE alert has red left border', async () => {
+    mockFetchWith('**CRITIQUE** : Allergie comfirmée');
+    const { container } = render(<AlertSystem patient={mockPatient} currentDraft={mockDraft} prescriptions={[]} />);
+    await act(async () => { await new Promise(r => setTimeout(r, 1500)); });
+    const banner = container.querySelector('[data-severity="CRITIQUE"]'); 
+    expect(banner).toHaveStyle('border-left: 4px solid #EF4444');
+  };
+  
 });
+

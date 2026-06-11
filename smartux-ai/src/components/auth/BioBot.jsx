@@ -2,9 +2,9 @@
 //  BioBot — multi-method authentication gate
 //
 //  Three authentication methods:
-//    1. Biométrie  — webcam + simulated face recognition
+//    1. Biométrie  — webcam + real face recognition (face-api.js)
 //    2. Badge RFID — simulated card tap
-//    3. Mot de passe — username + password (matched against DB_STAFF)
+//    3. Mot de passe — username + password (server-side hashed)
 //
 //  On success, calls onAuth(staffRecord) to pass the authenticated user
 //  up to the root component.
@@ -13,6 +13,8 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { DB_STAFF, ACCESS_PERMISSIONS, PERM_LABELS } from "../../database";
 import { ACCENT, ACCENT2, MUTED, GREEN, RED, AMBER, CARD, BORDER } from "../../constants/theme";
+import { loadModels, computeDescriptor, matchDescriptor, MATCH_THRESHOLD } from "../../utils/faceRecognition";
+import { fetchFaceDescriptors, saveFaceDescriptor, deleteFaceDescriptor, authLogin } from "../../api/client";
 import Btn from "../ui/Btn";
 
 // ── Canvas overlay — face detection frame drawn on top of webcam feed ─────────
@@ -78,6 +80,31 @@ function BioBot({ onAuth }) {
 
   // eslint-disable-next-line no-unused-vars
   const levelColor = (l) => l >= 4 ? RED : l === 3 ? AMBER : l === 2 ? ACCENT : MUTED;
+
+  // ── Real face-recognition state ─────────────────────────────────────────────
+  const [modelStatus,   setModelStatus]   = useState("loading"); // loading | ready | error
+  const [enrolledFaces, setEnrolledFaces] = useState([]);        // [{staff_id, descriptor, ...}]
+  const [bioMode,       setBioMode]       = useState("login");   // login | enroll
+  const [recogMsg,      setRecogMsg]      = useState("");        // extra feedback under the status pill
+
+  // Enrolment requires the person to prove their identity by password first,
+  // so a face can only be bound to the account it actually belongs to.
+  const [enrollAuthedStaff, setEnrollAuthedStaff] = useState(null); // staff validated by pwd
+  const [enrollLogin, setEnrollLogin] = useState("");
+  const [enrollPass,  setEnrollPass]  = useState("");
+  const [enrollError, setEnrollError] = useState("");
+
+  // Load TF.js models + enrolled descriptors once on mount
+  useEffect(() => {
+    let alive = true;
+    loadModels()
+      .then(() => alive && setModelStatus("ready"))
+      .catch(() => alive && setModelStatus("error"));
+    fetchFaceDescriptors()
+      .then(list => alive && setEnrolledFaces(list))
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
 
   // ── Camera helpers ────────────────────────────────────────────────────────
   const startCam = useCallback(async () => {
@@ -147,40 +174,138 @@ function BioBot({ onAuth }) {
   }, [camActive, camError]);
 
   // ── Auth flows ────────────────────────────────────────────────────────────
-  const simulateVerify = useCallback(() => {
-    const user = selectedUser || DB_STAFF.find(u => u.biometric_enrolled) || DB_STAFF[0];
-    setSelectedUser(user);
+
+  // Real face recognition: detect a face in the live video, compute its 128-D
+  // descriptor, and match it against the enrolled-faces database.
+  const runRecognition = useCallback(async () => {
+    if (modelStatus !== "ready") return;
+    if (camError) {
+      setStep("denied");
+      setRecogMsg("Caméra indisponible — la reconnaissance faciale nécessite un accès caméra.");
+      return;
+    }
     setStep("verifying");
-    setTimeout(() => {
-      setStep("granted");
-      setTimeout(() => onAuth && onAuth(user), 900);
-    }, 2200);
-  }, [selectedUser, onAuth]);
+    setRecogMsg("");
+    try {
+      const probe = await computeDescriptor(videoRef.current);
+      if (!probe) {
+        setStep("denied");
+        setRecogMsg("Aucun visage détecté — placez-vous face à la caméra, bien éclairé.");
+        return;
+      }
+      const result = matchDescriptor(probe, enrolledFaces);
+      if (result?.match) {
+        const user = DB_STAFF.find(u => u.staff_id === result.staff_id);
+        if (!user) {
+          setStep("denied");
+          setRecogMsg("Visage reconnu mais employé introuvable dans la base.");
+          return;
+        }
+        setSelectedUser(user);
+        setStep("granted");
+        setRecogMsg(`Correspondance — distance ${result.distance.toFixed(3)} (seuil ${MATCH_THRESHOLD})`);
+        setTimeout(() => onAuth && onAuth(user), 1200);
+      } else {
+        setStep("denied");
+        setRecogMsg(
+          enrolledFaces.length === 0
+            ? "Aucun visage enrôlé. Passez en mode « Enrôlement » pour ajouter votre visage."
+            : `Visage non reconnu${result ? ` (distance ${result.distance.toFixed(3)} > ${MATCH_THRESHOLD})` : ""}.`
+        );
+      }
+    } catch (e) {
+      setStep("denied");
+      setRecogMsg("Erreur de reconnaissance : " + e.message);
+    }
+  }, [modelStatus, camError, enrolledFaces, onAuth]);
+
+  // Enrolment: capture the authenticated staff member's face → store descriptor.
+  const runEnroll = useCallback(async () => {
+    if (modelStatus !== "ready" || !enrollAuthedStaff) return;
+    if (camError) { setRecogMsg("Caméra indisponible — impossible d'enrôler."); return; }
+    setStep("verifying");
+    setRecogMsg("");
+    try {
+      const descriptor = await computeDescriptor(videoRef.current);
+      if (!descriptor) {
+        setStep("scanning");
+        setRecogMsg("Aucun visage détecté — réessayez, bien centré et éclairé.");
+        return;
+      }
+      const staff = enrollAuthedStaff;
+      await saveFaceDescriptor({
+        staff_id: staff.staff_id,
+        employee_number: staff.employee_number,
+        descriptor,
+      });
+      const fresh = await fetchFaceDescriptors();
+      setEnrolledFaces(fresh);
+      setStep("scanning");
+      setRecogMsg(`✓ Visage de ${staff.first_name} ${staff.last_name} enrôlé.`);
+    } catch (e) {
+      setStep("scanning");
+      setRecogMsg("Erreur d'enrôlement : " + e.message);
+    }
+  }, [modelStatus, enrollAuthedStaff, camError]);
+
+  // Validate identity by password before allowing face enrolment.
+  const handleEnrollAuth = useCallback(() => {
+    setEnrollError("");
+    const login = enrollLogin.trim().toLowerCase();
+    const match = DB_STAFF.find(u =>
+      u.last_name.toLowerCase()       === login ||
+      u.employee_number.toLowerCase() === login ||
+      u.first_name.toLowerCase()      === login
+    );
+    if (!match)                        { setEnrollError("Identifiant inconnu.");      return; }
+    if (match.password !== enrollPass) { setEnrollError("Mot de passe incorrect."); return; }
+    setEnrollAuthedStaff(match);
+    setRecogMsg("");
+  }, [enrollLogin, enrollPass]);
+
+  const removeEnrollment = useCallback(async (staffId) => {
+    await deleteFaceDescriptor(staffId);
+    const fresh = await fetchFaceDescriptors();
+    setEnrolledFaces(fresh);
+  }, []);
+
+  // End the current enrolment session (sign the enroller back out).
+  const endEnrollSession = useCallback(() => {
+    stopCam();
+    setEnrollAuthedStaff(null);
+    setEnrollLogin(""); setEnrollPass(""); setEnrollError("");
+    setStep("idle");
+    setRecogMsg("");
+  }, [stopCam]);
 
   const reset = useCallback(() => {
     stopCam();
     setSelectedUser(null);
     setStep("idle");
     setCamError(false);
+    setRecogMsg("");
+    setEnrollAuthedStaff(null);
+    setEnrollLogin(""); setEnrollPass(""); setEnrollError("");
     setPwdLogin(""); setPwdPass(""); setPwdError("");
   }, [stopCam]);
 
-  const handlePasswordAuth = useCallback(() => {
+  const handlePasswordAuth = useCallback(async () => {
     setPwdError("");
-    const login = pwdLogin.trim().toLowerCase();
-    const match = DB_STAFF.find(u =>
-      u.last_name.toLowerCase()    === login ||
-      u.employee_number.toLowerCase() === login ||
-      u.first_name.toLowerCase()   === login
-    );
-    if (!match)               { setPwdError("Identifiant inconnu.");      return; }
-    if (match.password !== pwdPass) { setPwdError("Mot de passe incorrect."); return; }
-    setSelectedUser(match);
     setStep("verifying");
-    setTimeout(() => {
+    try {
+      const { user, error } = await authLogin(pwdLogin.trim(), pwdPass);
+      if (error) {
+        setStep("idle");
+        setPwdError(error);
+        return;
+      }
+      setSelectedUser(user);
       setStep("granted");
-      setTimeout(() => onAuth && onAuth(match), 900);
-    }, 1600);
+      setTimeout(() => onAuth && onAuth(user), 900);
+    } catch {
+      setStep("idle");
+      setPwdError("Serveur inaccessible.");
+    }
   }, [pwdLogin, pwdPass, onAuth]);
 
   const switchMethod = useCallback((m) => {
@@ -195,8 +320,8 @@ function BioBot({ onAuth }) {
   const stepColors = { idle: MUTED, scanning: AMBER, verifying: ACCENT, granted: GREEN, denied: RED };
   const stepLabels = {
     idle:      "En attente",
-    scanning:  "Caméra active — Positionnez votre visage",
-    verifying: "Vérification biométrique en cours…",
+    scanning:  bioMode === "enroll" ? "Caméra active — Cadrez le visage à enrôler" : "Caméra active — Positionnez votre visage",
+    verifying: bioMode === "enroll" ? "Capture du visage en cours…" : "Analyse faciale en cours…",
     granted:   "Identité confirmée — Accès autorisé",
     denied:    "Identité non reconnue — Accès refusé",
   };
@@ -247,9 +372,103 @@ function BioBot({ onAuth }) {
             ))}
           </div>
 
-          {/* ── Method 1: Biometrics ───────────────────────────────────────── */}
+          {/* ── Method 1: Biometrics (real face recognition) ───────────────── */}
           {authMethod === "bio" && (
             <div style={{ textAlign: "center" }}>
+
+              {/* Model loading / error banner */}
+              <div style={{
+                marginBottom: 12, padding: "7px 12px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                background: modelStatus === "ready" ? GREEN + "12" : modelStatus === "error" ? RED + "12" : AMBER + "12",
+                color:      modelStatus === "ready" ? GREEN        : modelStatus === "error" ? RED        : AMBER,
+              }}>
+                {modelStatus === "loading" && "Chargement des modèles de reconnaissance faciale…"}
+                {modelStatus === "ready"   && `Modèles prêts · ${enrolledFaces.length} visage(s) enrôlé(s)`}
+                {modelStatus === "error"   && "Échec du chargement des modèles (/models manquant ?)"}
+              </div>
+
+              {/* Login / Enroll mode toggle */}
+              <div style={{ display: "flex", borderRadius: 8, overflow: "hidden", border: "1.5px solid #E5E7EB", marginBottom: 14, maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>
+                {[{ id: "login", label: "Connexion" }, { id: "enroll", label: "Enrôlement" }].map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => {
+                      if (camActive) stopCam();
+                      setBioMode(m.id);
+                      setStep("idle");
+                      setRecogMsg("");
+                      setSelectedUser(null);
+                      setEnrollAuthedStaff(null);
+                      setEnrollLogin(""); setEnrollPass(""); setEnrollError("");
+                    }}
+                    style={{
+                      flex: 1, padding: "7px 6px", border: "none", cursor: "pointer",
+                      fontFamily: "'DM Sans', sans-serif", fontWeight: 600, fontSize: 12,
+                      background: bioMode === m.id ? ACCENT : "#fff",
+                      color:      bioMode === m.id ? "#fff"  : MUTED,
+                      borderRight: m.id === "login" ? "1px solid #E5E7EB" : "none",
+                    }}
+                  >
+                    {m.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Enrolment — step 1: prove identity by password */}
+              {bioMode === "enroll" && !enrollAuthedStaff && (
+                <div style={{ maxWidth: 380, margin: "0 auto", textAlign: "left" }}>
+                  <div style={{ background: "#F8FAFC", border: "1px solid #E2E8F0", borderRadius: 12, padding: 24, display: "flex", flexDirection: "column", gap: 13 }}>
+                    <div style={{ textAlign: "center", fontSize: 12, color: MUTED, marginBottom: 2 }}>
+                      Identifiez-vous avec votre mot de passe pour enregistrer votre visage.
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: MUTED, display: "block", marginBottom: 5 }}>Identifiant</label>
+                      <input
+                        value={enrollLogin}
+                        onChange={e => { setEnrollLogin(e.target.value); setEnrollError(""); }}
+                        onKeyDown={e => e.key === "Enter" && handleEnrollAuth()}
+                        placeholder="Ex : martin, EMP-001, sophie…"
+                        style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${enrollError ? RED : "#D1D5DB"}`, fontFamily: "'DM Sans', sans-serif", fontSize: 13, outline: "none" }}
+                      />
+                    </div>
+                    <div>
+                      <label style={{ fontSize: 12, fontWeight: 600, color: MUTED, display: "block", marginBottom: 5 }}>Mot de passe</label>
+                      <input
+                        type="password"
+                        value={enrollPass}
+                        onChange={e => { setEnrollPass(e.target.value); setEnrollError(""); }}
+                        onKeyDown={e => e.key === "Enter" && handleEnrollAuth()}
+                        placeholder="Mot de passe"
+                        style={{ width: "100%", boxSizing: "border-box", padding: "10px 14px", borderRadius: 8, border: `1.5px solid ${enrollError ? RED : "#D1D5DB"}`, fontFamily: "'DM Sans', sans-serif", fontSize: 13, outline: "none" }}
+                      />
+                    </div>
+                    {enrollError && (
+                      <div style={{ padding: "8px 12px", borderRadius: 8, background: RED + "10", color: RED, fontSize: 13, fontWeight: 600, textAlign: "center" }}>
+                        {enrollError}
+                      </div>
+                    )}
+                    <Btn variant="accent" onClick={handleEnrollAuth} disabled={!enrollLogin || !enrollPass} style={{ width: "100%" }}>
+                      Vérifier l'identité
+                    </Btn>
+                  </div>
+                </div>
+              )}
+
+              {/* Enrolment — confirmation banner once authenticated */}
+              {bioMode === "enroll" && enrollAuthedStaff && (
+                <div style={{ marginBottom: 12, maxWidth: 400, marginLeft: "auto", marginRight: "auto", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, padding: "8px 12px", borderRadius: 8, background: ACCENT + "10", fontSize: 12, color: ACCENT }}>
+                  <span style={{ fontWeight: 600, textAlign: "left" }}>
+                    Identité vérifiée — enregistrement du visage de {enrollAuthedStaff.title} {enrollAuthedStaff.first_name} {enrollAuthedStaff.last_name}
+                  </span>
+                  <button onClick={endEnrollSession} style={{ background: "none", border: "none", color: MUTED, cursor: "pointer", fontSize: 12, fontWeight: 600, whiteSpace: "nowrap" }}>
+                    Changer
+                  </button>
+                </div>
+              )}
+
+              {/* Camera block — shown for login, or for enrol once identity proven */}
+              {(bioMode === "login" || enrollAuthedStaff) && (
+              <>
               <div style={{ position: "relative", width: "100%", maxWidth: 400, margin: "0 auto", aspectRatio: "4/3", background: "#111827", borderRadius: 12, overflow: "hidden" }}>
                 <video
                   ref={videoRef} autoPlay playsInline muted
@@ -282,12 +501,54 @@ function BioBot({ onAuth }) {
                 {stepLabels[step]}
               </div>
 
+              {/* Recognition / enrolment feedback */}
+              {recogMsg && (
+                <div style={{ marginTop: 8, fontSize: 12, color: step === "granted" ? GREEN : step === "denied" ? RED : MUTED, maxWidth: 400, marginLeft: "auto", marginRight: "auto" }}>
+                  {recogMsg}
+                </div>
+              )}
+
               <div style={{ display: "flex", justifyContent: "center", gap: 10, marginTop: 16, flexWrap: "wrap" }}>
-                {step === "idle"     && <Btn variant="accent" onClick={startCam}>Activer la caméra</Btn>}
-                {step === "scanning" && <Btn variant="accent" onClick={simulateVerify}>Lancer la vérification</Btn>}
-                {(step === "granted" || step === "denied") && <Btn variant="ghost" onClick={reset}>Réinitialiser</Btn>}
-                {camActive && step !== "granted" && step !== "denied" && <Btn variant="ghost" onClick={stopCam}>Annuler</Btn>}
+                {step === "idle" && <Btn variant="accent" onClick={startCam}>Activer la caméra</Btn>}
+
+                {/* Login mode */}
+                {bioMode === "login" && step === "scanning" && (
+                  <Btn variant="accent" onClick={runRecognition} disabled={modelStatus !== "ready"}>
+                    {modelStatus === "ready" ? "Lancer la reconnaissance" : "Chargement…"}
+                  </Btn>
+                )}
+                {bioMode === "login" && step === "denied" && (
+                  <Btn variant="accent" onClick={runRecognition} disabled={modelStatus !== "ready"}>Réessayer</Btn>
+                )}
+
+                {/* Enroll mode */}
+                {bioMode === "enroll" && (step === "scanning" || step === "denied") && (
+                  <Btn variant="accent" onClick={runEnroll} disabled={modelStatus !== "ready" || !enrollAuthedStaff}>
+                    Capturer & enrôler le visage
+                  </Btn>
+                )}
+
+                {(step === "granted" || step === "denied") && bioMode === "login" && <Btn variant="ghost" onClick={reset}>Réinitialiser</Btn>}
+                {camActive && step !== "granted" && <Btn variant="ghost" onClick={stopCam}>Annuler</Btn>}
               </div>
+
+              {/* Enrolled faces management (visible only to an authenticated enroller) */}
+              {bioMode === "enroll" && enrollAuthedStaff && enrolledFaces.length > 0 && (
+                <div style={{ marginTop: 18, textAlign: "left", maxWidth: 400, marginLeft: "auto", marginRight: "auto", borderTop: "1px solid #E5E7EB", paddingTop: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: MUTED, marginBottom: 8 }}>Visages enrôlés</div>
+                  {enrolledFaces.map(f => {
+                    const s = DB_STAFF.find(u => u.staff_id === f.staff_id);
+                    return (
+                      <div key={f.staff_id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", fontSize: 12, padding: "5px 0" }}>
+                        <span>{s ? `${s.title} ${s.first_name} ${s.last_name}` : `Staff #${f.staff_id}`} <span style={{ color: MUTED }}>· {f.employee_number}</span></span>
+                        <button onClick={() => removeEnrollment(f.staff_id)} style={{ background: "none", border: "none", color: RED, cursor: "pointer", fontSize: 12, fontWeight: 600 }}>Retirer</button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              </>
+              )}
             </div>
           )}
 

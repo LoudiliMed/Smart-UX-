@@ -80,7 +80,12 @@ const GLOBAL_STYLES = `
 //  Root component
 // ─────────────────────────────────────────────────────────────────────────────
 export default function SmartUXBots() {
-  const [authenticatedUser, setAuthenticatedUser] = useState(null);
+  const [authenticatedUser, setAuthenticatedUser] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem("sillage_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch { return null; }
+  });
   const [activeTab,    setActiveTab]    = useState("nlp");
   const [activeSubTab, setActiveSubTab] = useState(null);
   const [chatOpen,     setChatOpen]     = useState(false);
@@ -136,6 +141,33 @@ export default function SmartUXBots() {
     );
   }, []);
 
+  // ── Auth helpers ─────────────────────────────────────────────────────────────
+  const handleAuth = useCallback((user) => {
+    sessionStorage.setItem("sillage_user", JSON.stringify(user));
+    setAuthenticatedUser(user);
+  }, []);
+
+  const handleLogout = useCallback(() => {
+    sessionStorage.removeItem("sillage_user");
+    setAuthenticatedUser(null);
+  }, []);
+
+  // 15-min inactivity timeout — resets on any mouse/keyboard/click activity
+  useEffect(() => {
+    if (!authenticatedUser) return;
+    let timerId = setTimeout(handleLogout, 15 * 60 * 1000);
+    const reset = () => { clearTimeout(timerId); timerId = setTimeout(handleLogout, 15 * 60 * 1000); };
+    window.addEventListener("mousemove", reset);
+    window.addEventListener("keydown", reset);
+    window.addEventListener("click", reset);
+    return () => {
+      clearTimeout(timerId);
+      window.removeEventListener("mousemove", reset);
+      window.removeEventListener("keydown", reset);
+      window.removeEventListener("click", reset);
+    };
+  }, [authenticatedUser, handleLogout]);
+
   // ── Badge counts for the Rx tab icon ────────────────────────────────────────
   const rxActive   = prescriptions.filter(r => !r.is_validated && !r.is_cancelled);
   const rxUrgent   = rxActive.filter(r => r.priorite === "URGENTE" || r.priorite === "STAT").length;
@@ -166,7 +198,7 @@ export default function SmartUXBots() {
         <div style={{ flex: 1, display: "flex", alignItems: "flex-start",
           justifyContent: "center", padding: "32px 16px" }}>
           <div style={{ width: "100%", maxWidth: 900, animation: "fadeIn .3s ease both" }}>
-            <BioBot onAuth={setAuthenticatedUser} />
+            <BioBot onAuth={handleAuth} />
           </div>
         </div>
       </div>
@@ -286,7 +318,7 @@ export default function SmartUXBots() {
                 </span>
               </div>
               {/* Logout */}
-              <button onClick={() => setAuthenticatedUser(null)} style={{
+              <button onClick={handleLogout} style={{
                 background: "none", border: "none", cursor: "pointer",
                 padding: "4px 8px", borderRadius: 6,
                 color: "rgba(255,255,255,.5)", fontSize: 11, fontWeight: 600,
@@ -402,3 +434,4 @@ export default function SmartUXBots() {
     </div>
   );
 }
+

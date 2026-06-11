@@ -11,6 +11,18 @@ const API_BASE = "http://localhost:3001";
 //  layer 2 (below) prepends the disclaimer if the model omits it.
 export const DISCLAIMER = "Analyse assistée par IA — vérification clinique recommandée";
 
+// ── Authentication ────────────────────────────────────────────────────────────
+export async function authLogin(login, password) {
+  const res = await fetch(`${API_BASE}/api/auth`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ login, password }),
+  });
+  const data = await res.json();
+  if (!res.ok) return { error: data.error || "Erreur d'authentification." };
+  return { user: data.user };
+}
+
 // ── NLP parsing  (non-streaming) ─────────────────────────────────────────────
 //  Sends raw medical text → Groq LLM → returns structured JSON object.
 export async function parseWithClaude(text) {
@@ -89,14 +101,91 @@ export async function callAIChat(systemPrompt, userMessage, history = []) {
   }
 }
 
+// ── Face-descriptor "database" ────────────────────────────────────────────────
+//  Descriptors are synced to the server (face_descriptors table) and mirrored
+//  to localStorage so biometrics keep working offline.
+//  A descriptor is a 128-float embedding — never an image.
+const FACE_LS_KEY = "smartux_face_descriptors";
+
+function lsReadFaces() {
+  try { return JSON.parse(localStorage.getItem(FACE_LS_KEY) || "[]"); }
+  catch { return []; }
+}
+function lsWriteFaces(list) {
+  localStorage.setItem(FACE_LS_KEY, JSON.stringify(list));
+}
+
+/** Returns [{ staff_id, employee_number, descriptor:number[], enrolled_at }]. */
+export async function fetchFaceDescriptors() {
+  try {
+    const res = await fetch(`${API_BASE}/api/faces`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    lsWriteFaces(data); // keep local copy in sync
+    return data;
+  } catch {
+    return lsReadFaces();
+  }
+}
+
+/** Enrol (or re-enrol) a staff member's face. Mirrors to localStorage. */
+export async function saveFaceDescriptor({ staff_id, employee_number, descriptor }) {
+  const record = { staff_id, employee_number, descriptor, enrolled_at: new Date().toISOString() };
+  const list = lsReadFaces().filter(f => f.staff_id !== staff_id);
+  lsWriteFaces([...list, record]);
+  try {
+    await fetch(`${API_BASE}/api/faces`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ staff_id, employee_number, descriptor }),
+    });
+  } catch { /* server unreachable — localStorage already updated */ }
+}
+
+/** Remove a staff member's enrolled face from both stores. */
+export async function deleteFaceDescriptor(staff_id) {
+  lsWriteFaces(lsReadFaces().filter(f => f.staff_id !== staff_id));
+  try {
+    await fetch(`${API_BASE}/api/faces/${staff_id}`, { method: "DELETE" });
+  } catch { /* server unreachable */ }
+}
+
+// ── localStorage helpers for offline persistence ─────────────────────────────
+const LS_KEY = "smartux_prescriptions";
+
+function getLocalPrescriptions() {
+  try {
+    return JSON.parse(localStorage.getItem(LS_KEY) || "[]");
+  } catch { return []; }
+}
+
+function setLocalPrescriptions(rxList) {
+  localStorage.setItem(LS_KEY, JSON.stringify(rxList));
+}
+
 // ── Prescription REST helpers ─────────────────────────────────────────────────
 
 export async function fetchPrescriptions() {
-  const res = await fetch(`${API_BASE}/api/prescriptions`);
-  return res.json();
+  try {
+    const res = await fetch(`${API_BASE}/api/prescriptions`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    setLocalPrescriptions(data);  // sync local cache on success
+    return data;
+  } catch {
+    // Server unreachable — fall back to localStorage
+    return getLocalPrescriptions();
+  }
 }
 
 export async function savePrescription(rx) {
+  // Always persist locally first (survives server downtime)
+  const local = getLocalPrescriptions();
+  const idx = local.findIndex(r => r.prescription_id === rx.prescription_id);
+  if (idx >= 0) local[idx] = rx; else local.unshift(rx);
+  setLocalPrescriptions(local);
+
+  // Then try server
   await fetch(`${API_BASE}/api/prescriptions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -105,6 +194,14 @@ export async function savePrescription(rx) {
 }
 
 export async function patchPrescription(id, changes) {
+  // Update local cache
+  const local = getLocalPrescriptions();
+  const idx = local.findIndex(r => r.prescription_id === id);
+  if (idx >= 0) {
+    local[idx] = { ...local[idx], ...changes };
+    setLocalPrescriptions(local);
+  }
+
   await fetch(`${API_BASE}/api/prescriptions/${id}`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

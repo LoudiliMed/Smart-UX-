@@ -22,7 +22,7 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 
 import { parseWithClaude, savePrescription } from "../../api/client";
-import { autoCorrect, mapNLPToPrescription, parseDelay, parsePositiveInt, parseNbJours } from "../../utils/nlp";
+import { autoCorrect, mapNLPToPrescription, parseDelay, parsePositiveInt, parseFrequencyToTimesPerDay, parseNbJours } from "../../utils/nlp";
 import { exportPDF } from "../../utils/pdf";
 import { ACCENT, ACCENT2, CARD, BORDER, MUTED, RED, AMBER, GREEN } from "../../constants/theme";
 
@@ -60,9 +60,79 @@ function NLPBot({
   const [history,      setHistory]      = useState([]);
   const [loading,      setLoading]      = useState(false);
   const [saved,        setSaved]        = useState({});   // prescription_id → true
-  const [pendingDelay, setPendingDelay] = useState(null); // { rx, step, echeance?, foisParJour? }
+  const [pendingDelay, setPendingDelay] = useState(null); // { rx, type, step, collected }
 
   const bottomRef = useRef(null);
+
+  // ── Determine order type from parsed rx ──────────────────────────────────
+  function getOrderType(rx) {
+    if (rx.examen || rx.action === "planifier") return "imaging";
+    if (rx.action === "prescrire" && !rx.examen) return "medication";
+    return "other"; // transfert, signaler, stopper, modifier
+  }
+
+  // ── Get the first dialogue step for an order type, skipping pre-filled ──
+  function getFirstStep(rx, type) {
+    if (type === "medication") {
+      if (!rx.frequency && !rx.fois_par_jour) return "fois_par_jour";
+      return "nb_jours";
+    }
+    if (type === "imaging") {
+      if (!rx.priorite) return "urgence";
+      return "delay";
+    }
+    return "delay"; // other
+  }
+
+  // ── Get the question text for the first step ────────────────────────────
+  function getStepQuestion(step) {
+    switch (step) {
+      case "fois_par_jour": return "Combien de fois par jour ? (ex : 1, 2, 3)";
+      case "nb_jours":      return "Pour combien de jours ? (ex : 5, 7, 2 semaines)";
+      case "urgence":       return "Quelle est la priorité ? (STAT / URGENTE / NORMALE)";
+      case "delay":         return "Quel est le délai imparti ? (ex : 2h, 24h, 3 jours, aucun)";
+      case "indication":    return "Indication clinique ? (motif de l'examen)";
+      default:              return "Quel est le délai imparti ?";
+    }
+  }
+
+  // ── Finalize the dialogue: build summary and show save button ───────────
+  function finalizeDialogue(rx, type, collected) {
+    const echeance = collected.echeance;
+    const echeanceLabel = !echeance || echeance === "immediate"
+      ? "Immédiat"
+      : new Date(echeance).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+
+    const updatedRx = {
+      ...rx,
+      echeance: echeance === "immediate" ? null : (echeance || null),
+      fois_par_jour: collected.fois_par_jour || rx.fois_par_jour || null,
+      nb_jours: collected.nb_jours || rx.nb_jours || null,
+      urgence: collected.urgence || rx.priorite || null,
+      indication_clinique: collected.indication_clinique || rx.indication || null,
+    };
+
+    // Patch the most recent bot-message with the updated Rx
+    setHistory(h => h.map((m, i) =>
+      (m.role === "bot" && i === h.length - 2) ? { ...m, rx: updatedRx } : m
+    ));
+
+    let summary;
+    if (type === "medication") {
+      const fpj = updatedRx.fois_par_jour;
+      const nbj = updatedRx.nb_jours;
+      summary = `${fpj}x/jour -- ${nbj} jour${nbj > 1 ? "s" : ""}`;
+    } else if (type === "imaging") {
+      const urg = updatedRx.urgence || "NORMALE";
+      const ind = updatedRx.indication_clinique || "-";
+      summary = `Priorité : ${urg} -- Délai : ${echeanceLabel} -- Indication : ${ind}`;
+    } else {
+      summary = `Délai : ${echeanceLabel}`;
+    }
+
+    setHistory(h => [...h, { role: "bot-info", text: summary, rx: updatedRx }]);
+    setPendingDelay(null);
+  }
 
   // Auto-scroll to the latest message
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); }, [history]);
@@ -71,64 +141,85 @@ function NLPBot({
   const send = useCallback(async (text) => {
     if (!text.trim()) return;
 
-    // ── Multi-step delay dialogue ──────────────────────────────────────────
+    // ── Multi-step order-type-aware dialogue ────────────────────────────────
     if (pendingDelay) {
       const userText = text.trim();
       setHistory(h => [...h, { role: "user", text: userText }]);
       setInput("");
 
-      // Step 1: delay
-      if (pendingDelay.step === "delay") {
-        const echeance = parseDelay(userText);
-        if (!echeance) {
-          setHistory(h => [...h, {
-            role: "bot-question",
-            text: "Délai non reconnu. Indiquez un délai valide (ex : 2h, 24h, 3 jours) ou « aucun » pour une administration immédiate.",
-          }]);
-          return;
-        }
-        setPendingDelay({ ...pendingDelay, step: "fois_par_jour", echeance });
-        setHistory(h => [...h, { role: "bot-question", text: "Combien de fois par jour ? (ex : 1, 2, 3)" }]);
-        return;
-      }
+      const { rx, type, step, collected } = pendingDelay;
 
-      // Step 2: frequency per day
-      if (pendingDelay.step === "fois_par_jour") {
+      // --- Step handlers (shared across flows) ---
+
+      // Frequency (medication only)
+      if (step === "fois_par_jour") {
         const foisParJour = parsePositiveInt(userText);
         if (!foisParJour) {
-          setHistory(h => [...h, {
-            role: "bot-question",
-            text: "Valeur non reconnue. Indiquez un nombre entier (ex : 1, 2, 3).",
-          }]);
+          setHistory(h => [...h, { role: "bot-question", text: "Valeur non reconnue. Indiquez un nombre entier (ex : 1, 2, 3)." }]);
           return;
         }
-        setPendingDelay({ ...pendingDelay, step: "nb_jours", foisParJour });
+        const next = { ...pendingDelay, collected: { ...collected, fois_par_jour: foisParJour } };
+        next.step = "nb_jours";
+        setPendingDelay(next);
         setHistory(h => [...h, { role: "bot-question", text: "Pour combien de jours ? (ex : 5, 7, 2 semaines)" }]);
         return;
       }
 
-      // Step 3: duration in days → finalise
-      if (pendingDelay.step === "nb_jours") {
+      // Duration in days (medication only) → finalize directly, no delay question
+      if (step === "nb_jours") {
         const nbJours = parseNbJours(userText);
         if (!nbJours) {
-          setHistory(h => [...h, {
-            role: "bot-question",
-            text: "Valeur non reconnue. Indiquez un nombre de jours (ex : 5, 7) ou de semaines (ex : 2 semaines).",
-          }]);
+          setHistory(h => [...h, { role: "bot-question", text: "Valeur non reconnue. Indiquez un nombre de jours (ex : 5, 7) ou de semaines (ex : 2 semaines)." }]);
           return;
         }
-        const { rx, echeance, foisParJour } = pendingDelay;
-        const echeanceLabel = echeance === "immediate"
-          ? "Immédiat"
-          : new Date(echeance).toLocaleString("fr-FR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
-        const updatedRx = { ...rx, echeance: echeance === "immediate" ? null : echeance, fois_par_jour: foisParJour, nb_jours: nbJours };
-        // Patch the most recent bot-message with the updated Rx
-        setHistory(h => h.map((m, i) =>
-          (m.role === "bot" && i === h.length - 2) ? { ...m, rx: updatedRx } : m
-        ));
-        const summary = `Délai : ${echeanceLabel} — ${foisParJour}x/jour — ${nbJours} jour${nbJours > 1 ? "s" : ""}`;
-        setHistory(h => [...h, { role: "bot-info", text: summary, rx: updatedRx }]);
-        setPendingDelay(null);
+        finalizeDialogue(rx, type, { ...collected, nb_jours: nbJours });
+        return;
+      }
+
+      // Urgency (imaging only)
+      if (step === "urgence") {
+        const normalized = userText.toUpperCase();
+        const urgence = normalized.includes("STAT") ? "STAT"
+          : (normalized.includes("URGENT") || normalized.includes("HAUTE")) ? "URGENTE"
+          : "NORMALE";
+        const next = { ...pendingDelay, collected: { ...collected, urgence } };
+        next.step = "delay";
+        setPendingDelay(next);
+        setHistory(h => [...h, { role: "bot-question", text: "Quel est le délai souhaité ? (ex : 2h, 24h, aucun)" }]);
+        return;
+      }
+
+      // Indication clinique (imaging only)
+      if (step === "indication") {
+        const next = { ...pendingDelay, collected: { ...collected, indication_clinique: userText } };
+        // Finalize imaging flow
+        finalizeDialogue(rx, type, next.collected);
+        return;
+      }
+
+      // Delay (all flows)
+      if (step === "delay") {
+        const echeance = parseDelay(userText);
+        if (!echeance) {
+          setHistory(h => [...h, { role: "bot-question", text: "Délai non reconnu. Indiquez un délai valide (ex : 2h, 24h, 3 jours) ou « aucun »." }]);
+          return;
+        }
+        const newCollected = { ...collected, echeance };
+
+        // What comes after delay depends on flow type
+        if (type === "imaging") {
+          // After delay → indication (if not already extracted)
+          if (!rx.indication && !rx.diagnostic) {
+            setPendingDelay({ ...pendingDelay, step: "indication", collected: newCollected });
+            setHistory(h => [...h, { role: "bot-question", text: "Indication clinique ? (motif de l'examen)" }]);
+            return;
+          }
+          newCollected.indication_clinique = rx.indication || rx.diagnostic;
+          finalizeDialogue(rx, type, newCollected);
+          return;
+        }
+        // medication & other → finalize
+        finalizeDialogue(rx, type, newCollected);
         return;
       }
     }
@@ -157,12 +248,19 @@ function NLPBot({
     if (rx._matched_patient && onPatientResolved) {
       onPatientResolved(rx._matched_patient.patient_id);
     }
-    // Begin the delay dialogue
+    // Begin the order-type-aware dialogue
+    const type = getOrderType(rx);
+    const firstStep = getFirstStep(rx, type);
+    const collected = {};
+    // Smart-skip: pre-fill collected with fields already extracted by NLP
+    if (type === "medication" && rx.frequency) collected.fois_par_jour = parseFrequencyToTimesPerDay(rx.frequency);
+    if (type === "imaging" && rx.priorite) collected.urgence = rx.priorite;
+
     setHistory(h => [...h, {
       role: "bot-question",
-      text: "Quel est le délai imparti pour cet acte ? (ex : 2h, 24h, 3 jours, aucun)",
+      text: getStepQuestion(firstStep),
     }]);
-    setPendingDelay({ rx, step: "delay" });
+    setPendingDelay({ rx, type, step: firstStep, collected });
     setLoading(false);
   }, [pendingDelay, onPatientResolved]);
 
@@ -260,7 +358,7 @@ function NLPBot({
             <div key={i} style={{ alignSelf: "flex-start", background: AMBER + "18",
               border: `1.5px solid ${AMBER}44`, borderRadius: "14px 14px 14px 4px",
               padding: "12px 18px", maxWidth: "80%", fontSize: 14, color: "#334155" }}>
-              <span style={{ fontWeight: 700, color: AMBER, marginRight: 8 }}>Délai imparti</span>
+              <span style={{ fontWeight: 700, color: AMBER, marginRight: 8 }}>Question</span>
               {m.text}
             </div>
           );
@@ -383,6 +481,10 @@ function NLPBot({
                       ["Priorité",   m.rx.priorite],
                       ["Allergie",   m.rx.allergie_signalee],
                       ["Action",     m.rx.action],
+                      ["Examen",     m.rx.examen],
+                      ["Fois/jour",  m.rx.fois_par_jour],
+                      ["Nb jours",   m.rx.nb_jours],
+                      ["Urgence",    m.rx.urgence],
                     ].filter(([, v]) => v).map(([label, val]) => (
                       <span key={label} style={{ fontSize: 12, color: "#334155" }}>
                         <span style={{ fontWeight: 600, color: MUTED }}>{label} : </span>{val}
@@ -392,7 +494,7 @@ function NLPBot({
                   <div style={{ padding: "8px 14px 12px", borderTop: "1px solid #F1F5F9",
                     display: "flex", gap: 8, alignItems: "center" }}>
                     <span style={{ fontSize: 12, color: AMBER, fontStyle: "italic", flex: 1 }}>
-                      En attente du délai imparti…
+                      En attente de complétion…
                     </span>
                     <button onClick={() => exportPDF(m.rx)} style={{
                       padding: "5px 12px", borderRadius: 7, border: `1px solid ${ACCENT}`,
@@ -444,7 +546,7 @@ function NLPBot({
           onSubmit={send}
           loading={loading}
           placeholder={
-            pendingDelay ? "Saisissez le délai imparti…"
+            pendingDelay ? "Répondez à la question ci-dessus…"
             : compact    ? "Posez votre question…"
             : undefined
           }

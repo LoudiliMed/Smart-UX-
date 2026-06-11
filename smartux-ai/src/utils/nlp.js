@@ -142,6 +142,20 @@ export function parsePositiveInt(str) {
   return match ? parseInt(match[1]) : null;
 }
 
+// ── Convert a frequency string to times-per-day ───────────────────────────────
+//  "toutes les 6h" / "toutes les 6 heures" → 24/6 = 4
+//  "toutes les 8h" → 3  ·  "toutes les 12h" → 2
+//  Falls back to parsePositiveInt for "2 fois par jour", "3", etc.
+export function parseFrequencyToTimesPerDay(str) {
+  if (!str) return null;
+  const everyHours = str.match(/toutes\s+les\s+(\d+)\s*h/i);
+  if (everyHours) {
+    const h = parseInt(everyHours[1]);
+    return h > 0 ? Math.round(24 / h) : null;
+  }
+  return parsePositiveInt(str);
+}
+
 // ── Convert a duration string to a number of days ────────────────────────────
 //  "7 jours" → 7 · "2 semaines" → 14
 export function parseNbJours(str) {
